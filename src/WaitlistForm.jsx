@@ -1,30 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { providers, waitlist } from './data';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+
+const getChildAge = (dateValue) => {
+  if (!dateValue) return '';
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const today = new Date();
+  let years = today.getFullYear() - year;
+  let months = today.getMonth() + 1 - month;
+
+  if (today.getDate() < day) months--;
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+  if (years < 0) return 'Not yet born';
+
+  const parts = [];
+  if (years > 0) parts.push(`${years} year${years !== 1 ? 's' : ''}`);
+  if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
+  return parts.length > 0 ? parts.join(', ') : 'Newborn';
+};
 
 const WaitlistForm = () => {
   const { id } = useParams();
   const providerId = parseInt(id);
-  const provider = providers.find(p => p.id === providerId);
+  const [provider, setProvider] = useState(null);
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     parentNames: '',
+    email: '',
+    phone: '',
     childName: '',
-    childAge: '',
     dobOrDueDate: '',
     desiredStartMonth: '',
     desiredStartYear: ''
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [providerError, setProviderError] = useState('');
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, []);
+    const fetchProvider = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/providers/${providerId}`);
+        if (!response.ok) throw new Error(`Provider request failed (${response.status})`);
+        const data = await response.json();
+        setProvider(data);
+      } catch (error) {
+        console.error("Error fetching provider:", error);
+        setProviderError('Unable to load this provider. Please try again later.');
+      }
+    };
+    fetchProvider();
+  }, [providerId]);
 
   if (!provider) {
-    return <div className="p-20 text-center text-red-600 font-bold">Provider not found</div>;
+    return <div className="p-20 text-center text-red-600 font-bold">{providerError || 'Loading...'}</div>;
   }
 
   const handleChange = (e) => {
@@ -32,25 +70,43 @@ const WaitlistForm = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const entry = {
-      ...formData,
-      providerId,
-      providerName: provider.name,
-      timestamp: new Date().toISOString()
+      parent_names: formData.parentNames,
+      email: formData.email,
+      phone: formData.phone,
+      child_name: formData.childName,
+      child_age: getChildAge(formData.dobOrDueDate),
+      dob_or_due_date: formData.dobOrDueDate,
+      desired_start_month: formData.desiredStartMonth,
+      desired_start_year: parseInt(formData.desiredStartYear),
+      provider_id: providerId
     };
     
-    // Store in the array in data.js (runtime)
-    waitlist.push(entry);
-    
-    console.log('Waitlist updated:', waitlist);
-    setSubmitted(true);
-    
-    // Redirect after 3 seconds or on button click
-    setTimeout(() => {
-      navigate('/');
-    }, 3000);
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const response = await fetch(`${API_BASE}/waitlist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(entry),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = typeof result?.detail === 'string' ? result.detail : 'Unable to submit the waitlist application.';
+        throw new Error(detail);
+      }
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Error posting data:", error);
+      setSubmitError(error.message || 'Unable to submit the waitlist application.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -116,29 +172,29 @@ const WaitlistForm = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
-                  Child's Name
+                  Email Address
                 </label>
                 <input
                   required
-                  type="text"
-                  name="childName"
-                  value={formData.childName}
+                  type="email"
+                  name="email"
+                  value={formData.email}
                   onChange={handleChange}
-                  placeholder="Full Name"
+                  placeholder="email@example.com"
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"
                 />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
-                  Child's Age
+                  Phone Number
                 </label>
                 <input
                   required
-                  type="text"
-                  name="childAge"
-                  value={formData.childAge}
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
                   onChange={handleChange}
-                  placeholder="e.g. 2 years"
+                  placeholder="555-555-5555"
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"
                 />
               </div>
@@ -146,16 +202,44 @@ const WaitlistForm = () => {
 
             <div>
               <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
-                Date of Birth or Due Date
+                Child's Name
               </label>
               <input
                 required
-                type="date"
-                name="dobOrDueDate"
-                value={formData.dobOrDueDate}
+                type="text"
+                name="childName"
+                value={formData.childName}
                 onChange={handleChange}
+                placeholder="Full Name"
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  Date of Birth or Due Date
+                </label>
+                <input
+                  required
+                  type="date"
+                  name="dobOrDueDate"
+                  value={formData.dobOrDueDate}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  Age
+                </label>
+                <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 font-medium min-h-[46px] flex items-center">
+                  {formData.dobOrDueDate
+                    ? getChildAge(formData.dobOrDueDate)
+                    : <span className="text-gray-400 italic">Age</span>
+                  }
+                </div>
+              </div>
             </div>
 
             <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
@@ -203,11 +287,18 @@ const WaitlistForm = () => {
             </p>
           </div>
 
+          {submitError && (
+            <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              {submitError}
+            </p>
+          )}
+
           <button
             type="submit"
-            className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            disabled={submitting}
+            className="w-full py-4 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 disabled:cursor-wait disabled:opacity-60 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
           >
-            Submit Waitlist Application
+            {submitting ? 'Submitting...' : 'Submit Waitlist Application'}
           </button>
         </form>
       </div>

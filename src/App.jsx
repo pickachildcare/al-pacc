@@ -1,13 +1,81 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Routes, Route, useNavigate, useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { Routes, Route, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import leafBg from './assets/bg.jpg';
+import parentsHero from './assets/parents-hero.jpg';
+import logo from './assets/logo.png';
 import './App.css';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { providers, agencies, addresses, spotsAvailable } from './data';
 import SearchAutocomplete from './SearchAutocomplete';
 import WaitlistForm from './WaitlistForm';
+import BookTourForm from './BookTourForm';
+import AgenciesPage from './AgenciesPage';
+import ResourcesPage from './ResourcesPage';
+import { PaginatedList } from './Pagination';
+import AgencyDetails from './AgencyDetails';
+import AdminDashboard from './AdminDashboard';
+import { AuthModal } from './AuthForms';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+const DataContext = React.createContext(null);
+const provinceNamesByCode = {
+  AB: 'Alberta',
+  BC: 'British Columbia',
+  MB: 'Manitoba',
+  NB: 'New Brunswick',
+  NL: 'Newfoundland and Labrador',
+  NS: 'Nova Scotia',
+  NT: 'Northwest Territories',
+  NU: 'Nunavut',
+  ON: 'Ontario',
+  PE: 'Prince Edward Island',
+  QC: 'Quebec',
+  SK: 'Saskatchewan',
+  YT: 'Yukon',
+};
+const normalizeProvince = (province) => {
+  const value = (province || '').trim();
+  return provinceNamesByCode[value.toUpperCase()] || value;
+};
+
+const fetchApi = async (path) => {
+  const response = await fetch(`${API_BASE}/${path}`);
+  if (!response.ok) throw new Error(`Could not load ${path} (${response.status})`);
+  return response.json();
+};
+
+const formatHoursTime = (value) => {
+  const [h, m] = String(value || '').split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
+
+const normalizeProvider = (provider) => ({
+  ...provider,
+  agencyId: provider.agency_id,
+  spotsAvailable: provider.spots_available ?? 0,
+  maxCapacity: provider.max_capacity ?? 0,
+  AgesServed: provider.ages_served || [],
+  scheduleOptions: provider.schedule_options || [],
+  mealsProvided: provider.meals_provided ?? false,
+  snackProvided: provider.snack_provided ?? false,
+});
+
+const normalizeAddress = (address) => ({
+  ...address,
+  fullAddress: address.full_address,
+  coordinates: { lat: address.latitude, lng: address.longitude },
+});
+
+const normalizeSpot = (spot) => ({
+  ...spot,
+  providerId: spot.provider_id,
+  AgeAvailable: spot.age_available,
+  partTime: spot.part_time,
+  fullTime: spot.full_time,
+  startDate: spot.start_date,
+});
 
 const AgencyModal = ({ agency, onClose }) => {
   if (!agency) return null;
@@ -121,6 +189,7 @@ const AgesServedModal = ({ provider, onClose }) => {
 };
 
 const SpotsAvailableModal = ({ provider, onClose }) => {
+  const { spotsAvailable } = useContext(DataContext);
   if (!provider) return null;
   const providerSpots = spotsAvailable.filter(s => s.providerId === provider.id);
 
@@ -160,7 +229,7 @@ const SpotsAvailableModal = ({ provider, onClose }) => {
                 <tbody className="divide-y divide-gray-50">
                   {providerSpots.map((spot) => (
                     <tr key={spot.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 font-bold text-gray-900">{spot.AgeServed}</td>
+                      <td className="px-4 py-3 font-bold text-gray-900">{spot.AgeAvailable}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-1 rounded-lg font-bold text-xs ${spot.partTime > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                           {spot.partTime} spots
@@ -221,72 +290,62 @@ const deg2rad = (deg) => {
   return deg * (Math.PI / 180);
 };
 
-const Navbar = ({ onSearchTypeChange }) => {
+const Navbar = ({ onLoginClick, onRegisterClick, loggedInUser, onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isSearchByOpen, setIsSearchByOpen] = useState(false);
-  const navigate = useNavigate();
-
-  const searchOptions = [
-    { label: "Nearby Location", value: "Nearby" },
-    { label: "Province/City", value: "Province/City" },
-    { label: "Agency name", value: "Agency" },
-    { label: "Business/Provider name", value: "Name" }
-  ];
+  const { pathname } = useLocation();
+  const isProvidersActive = pathname === '/' || pathname.startsWith('/provider/') || pathname.startsWith('/waitlist/') || pathname.startsWith('/book-tour/');
+  const isAgenciesActive = pathname === '/agencies' || pathname.startsWith('/agency/');
+  const isResourcesActive = pathname === '/resources';
+  const isParentsActive = pathname === '/parents';
+  const navLinkClass = (isActive) => `rounded-lg px-3 py-2 font-medium transition ${
+    isActive
+      ? 'bg-green-700 text-white shadow-sm'
+      : 'text-gray-600 hover:bg-green-50 hover:text-green-700'
+  }`;
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
-          <Link to="/" className="flex items-center space-x-2">
-            <div className="bg-green-600 p-1.5 rounded-lg">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-            </div>
-            <span className="text-xl sm:text-2xl font-bold text-green-600 tracking-tight">Pick A Childcare</span>
+          <Link to="/" className="flex items-center" aria-label="Pick A Childcare home">
+            <img src={logo} alt="Pick A Childcare" className="h-12 sm:h-14 w-auto" />
           </Link>
           
           <div className="hidden md:flex items-center space-x-8">
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/')}
-                className="text-gray-600 hover:text-green-600 font-medium transition flex items-center gap-1 py-4 cursor-pointer"
-                onMouseEnter={() => setIsSearchByOpen(true)}
-                onMouseLeave={() => setIsSearchByOpen(false)}
-              >
-                Search By
-                <svg className={`w-4 h-4 transition-transform duration-200 ${isSearchByOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              <div 
-                className={`absolute left-0 mt-0 w-52 bg-white border border-gray-100 rounded-xl shadow-xl py-2 transition-all duration-200 ${isSearchByOpen ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-2'}`}
-                onMouseEnter={() => setIsSearchByOpen(true)}
-                onMouseLeave={() => setIsSearchByOpen(false)}
-              >
-                {searchOptions.map((option) => (
-                  <button 
-                    key={option.value}
-                    onClick={() => {
-                      onSearchTypeChange(option.value);
-                      setIsSearchByOpen(false);
-                    }}
-                    className="w-full text-left block px-4 py-2 text-sm text-gray-600 hover:bg-green-50 hover:text-green-600 transition"
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <a href="#" className="text-gray-600 hover:text-green-600 font-medium transition">For Providers</a>
-            <Link to="/parents" className="text-gray-600 hover:text-green-600 font-medium transition">Parents</Link>
-            <a href="#" className="text-gray-600 hover:text-green-600 font-medium transition">Resources</a>
+            <Link to="/" aria-current={isProvidersActive ? 'page' : undefined} className={navLinkClass(isProvidersActive)}>Providers</Link>
+            <Link to="/agencies" aria-current={isAgenciesActive ? 'page' : undefined} className={navLinkClass(isAgenciesActive)}>Agencies</Link>
+            <Link to="/parents" aria-current={isParentsActive ? 'page' : undefined} className={navLinkClass(isParentsActive)}>Parents</Link>
+            <Link to="/resources" aria-current={isResourcesActive ? 'page' : undefined} className={navLinkClass(isResourcesActive)}>Resources</Link>
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
-            <button className="text-gray-600 font-medium hover:text-green-600">Login</button>
-            <button className="bg-green-600 text-white px-5 py-2 rounded-full font-medium hover:bg-green-700 transition shadow-md hover:shadow-lg">Sign Up</button>
+            {loggedInUser ? (
+              <div className="flex items-center gap-3">
+                {loggedInUser.userType === 'admin' && (
+                  <Link to="/admin" className="text-sm font-semibold text-green-700 hover:underline">Admin</Link>
+                )}
+                <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="text-sm font-bold text-green-700">{loggedInUser.username}</span>
+                  {loggedInUser.userType && (
+                    <span className="text-[10px] font-bold text-green-500 uppercase bg-green-100 px-1.5 py-0.5 rounded">{loggedInUser.userType}</span>
+                  )}
+                </div>
+                <button 
+                  onClick={onLogout}
+                  className="text-gray-500 text-sm font-medium hover:text-red-600 transition cursor-pointer"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                <button onClick={onLoginClick} className="text-gray-600 font-medium hover:text-green-600 cursor-pointer">Login</button>
+                <button onClick={onRegisterClick} className="bg-green-600 text-white px-5 py-2 rounded-full font-medium hover:bg-green-700 transition shadow-md hover:shadow-lg cursor-pointer">Register</button>
+              </>
+            )}
           </div>
 
           <div className="md:hidden flex items-center">
@@ -310,44 +369,36 @@ const Navbar = ({ onSearchTypeChange }) => {
       {isOpen && (
         <div className="md:hidden bg-white border-t border-gray-100 px-4 pt-2 pb-6 space-y-4 shadow-lg">
           <div className="flex flex-col space-y-3">
-            <div className="py-2">
-              <button 
-                onClick={() => {
-                  navigate('/');
-                  setIsSearchByOpen(!isSearchByOpen);
-                }}
-                className="flex items-center justify-between w-full text-gray-600 hover:text-green-600 font-medium cursor-pointer"
-              >
-                Search By
-                <svg className={`w-4 h-4 transition-transform duration-200 ${isSearchByOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {isSearchByOpen && (
-                <div className="mt-2 ml-4 flex flex-col space-y-2 border-l-2 border-gray-50 pl-4">
-                  {searchOptions.map((option) => (
-                    <button 
-                      key={option.value} 
-                      onClick={() => {
-                        onSearchTypeChange(option.value);
-                        setIsOpen(false);
-                        setIsSearchByOpen(false);
-                      }}
-                      className="text-left text-sm text-gray-500 hover:text-green-600 py-1 transition"
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <a href="#" className="text-gray-600 hover:text-green-600 font-medium py-2">For Providers</a>
-            <Link to="/parents" className="text-gray-600 hover:text-green-600 font-medium py-2" onClick={() => setIsOpen(false)}>Parents</Link>
-            <a href="#" className="text-gray-600 hover:text-green-600 font-medium py-2">Resources</a>
+            <Link to="/" aria-current={isProvidersActive ? 'page' : undefined} className={navLinkClass(isProvidersActive)} onClick={() => setIsOpen(false)}>Providers</Link>
+            <Link to="/agencies" aria-current={isAgenciesActive ? 'page' : undefined} className={navLinkClass(isAgenciesActive)} onClick={() => setIsOpen(false)}>Agencies</Link>
+            <Link to="/parents" aria-current={isParentsActive ? 'page' : undefined} className={navLinkClass(isParentsActive)} onClick={() => setIsOpen(false)}>Parents</Link>
+            <Link to="/resources" aria-current={isResourcesActive ? 'page' : undefined} className={navLinkClass(isResourcesActive)} onClick={() => setIsOpen(false)}>Resources</Link>
           </div>
           <div className="pt-4 border-t border-gray-100 flex flex-col space-y-3">
-            <button className="text-gray-600 font-medium py-2 text-left">Login</button>
-            <button className="bg-green-600 text-white px-5 py-3 rounded-xl font-medium hover:bg-green-700 transition w-full shadow-md">Sign Up</button>
+            {loggedInUser ? (
+              <>
+                <div className="flex items-center gap-2 bg-green-50 px-3 py-2 rounded-xl border border-green-200">
+                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="text-sm font-bold text-green-700">{loggedInUser.username}</span>
+                  {loggedInUser.userType && (
+                    <span className="text-[10px] font-bold text-green-500 uppercase bg-green-100 px-1.5 py-0.5 rounded">{loggedInUser.userType}</span>
+                  )}
+                </div>
+                <button 
+                  onClick={() => { onLogout(); setIsOpen(false); }}
+                  className="text-gray-500 font-medium py-2 text-left hover:text-red-600 transition cursor-pointer"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { onLoginClick(); setIsOpen(false); }} className="text-gray-600 font-medium py-2 text-left cursor-pointer">Login</button>
+                <button onClick={() => { onRegisterClick(); setIsOpen(false); }} className="bg-green-600 text-white px-5 py-3 rounded-xl font-medium hover:bg-green-700 transition w-full shadow-md cursor-pointer">Register</button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -355,12 +406,13 @@ const Navbar = ({ onSearchTypeChange }) => {
   );
 };
 
-const SearchBar = ({ onSearch, searchType, setSearchType }) => {
+const SearchBar = ({ onSearch, onClear, searchType, setSearchType, initialAgencyName = '' }) => {
+  const { providers, agencies, provinces, cities, communities } = useContext(DataContext);
   const [location, setLocation] = useState('');
   const [nearbyLocation, setNearbyLocation] = useState(null);
   const [distance, setDistance] = useState('');
   const [providerName, setProviderName] = useState('');
-  const [agencyName, setAgencyName] = useState('');
+  const [agencyName, setAgencyName] = useState(initialAgencyName);
 
   const [province, setProvince] = useState('');
   const [city, setCity] = useState('');
@@ -372,23 +424,16 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
     setNearbyLocation(null);
     setDistance('');
     setProviderName('');
-    setAgencyName('');
+    setAgencyName(searchType === 'Agency' ? initialAgencyName : '');
     setProvince('');
     setCity('');
     setCommunity('');
   }, [searchType]);
 
-  const locationData = addresses.reduce((acc, addr) => {
-    const p = addr.province;
-    const c = addr.city;
-    const comm = addr.community;
-    
-    if (!acc[p]) acc[p] = {};
-    if (!acc[p][c]) acc[p][c] = [];
-    if (!acc[p][c].includes(comm)) acc[p][c].push(comm);
-    
-    return acc;
-  }, {});
+  const selectedProvince = provinces.find(item => item.name === province);
+  const selectedCity = cities.find(item => item.province_id === selectedProvince?.id && item.name === city);
+  const citiesForProvince = cities.filter(item => item.province_id === selectedProvince?.id);
+  const communitiesForCity = communities.filter(item => item.city_id === selectedCity?.id);
 
   const searchTypes = ['Nearby', 'Province/City', 'Agency', 'Name'];
 
@@ -411,6 +456,26 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
     }
   };
 
+  const hasSearchValue = searchType === 'Name'
+    ? Boolean(providerName)
+    : searchType === 'Agency'
+      ? Boolean(agencyName)
+      : searchType === 'Province/City'
+        ? Boolean(province || city || community)
+        : Boolean(location || nearbyLocation || distance);
+
+  const handleClear = () => {
+    setLocation('');
+    setNearbyLocation(null);
+    setDistance('');
+    setProviderName('');
+    setAgencyName('');
+    setProvince('');
+    setCity('');
+    setCommunity('');
+    onClear();
+  };
+
   const providerSuggestions = providers.map((p) => ({
     label: p.name,
     value: p.name,
@@ -423,29 +488,35 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
 
   return (
     <div className="w-[90%] mx-auto bg-white shadow-xl p-4 sm:p-6 border border-gray-100 rounded-2xl">
-      <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 max-w-7xl mx-auto">
-        <div className="flex-none w-full md:w-80 relative">
-          <select
-            className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition appearance-none font-medium"
-            value={searchType}
-            onChange={(e) => {
-              setSearchType(e.target.value);
-              onSearch({}); // Reset criteria when switching types
-            }}
-          >
-            {searchTypes.map(type => (
-              <option key={type} value={type}>
-                {type === 'Name' ? 'Search by Business/Provider name' : 
-                 type === 'Agency' ? 'Search by Agency' : 
-                 type === 'Nearby' ? 'Search by Nearby location' :
-                 `Search by ${type}`}
-              </option>
-            ))}
-          </select>
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-            </svg>
+      <form onSubmit={handleSubmit} className="flex flex-col md:flex-row md:items-end gap-4 max-w-7xl mx-auto">
+        <div className="flex-none w-full md:w-60">
+          <label htmlFor="provider-search-type" className="block text-sm font-medium text-gray-600 mb-1">
+            Search by
+          </label>
+          <div className="relative">
+            <select
+              id="provider-search-type"
+              className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition appearance-none font-medium"
+              value={searchType}
+              onChange={(e) => {
+                setSearchType(e.target.value);
+                onSearch({}); // Reset criteria when switching types
+              }}
+            >
+              {searchTypes.map(type => (
+                <option key={type} value={type}>
+                  {type === 'Name' ? 'Provider name' :
+                   type === 'Agency' ? 'Agency' :
+                   type === 'Nearby' ? 'Nearby location' :
+                   type}
+                </option>
+              ))}
+            </select>
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
         {searchType === 'Name' ? (
@@ -476,7 +547,7 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
           </div>
         ) : searchType === 'Province/City' ? (
           <>
-            <div className="flex-[1.5] relative">
+            <div className="flex-1 relative">
               <select
                 className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition appearance-none"
                 value={province}
@@ -487,8 +558,8 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
                 }}
               >
                 <option value="">Select Province</option>
-                {Object.keys(locationData).map(p => (
-                  <option key={p} value={p}>{p}</option>
+                {provinces.map(item => (
+                  <option key={item.id} value={item.name}>{item.name}</option>
                 ))}
               </select>
               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -508,8 +579,8 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
                 disabled={!province}
               >
                 <option value="">Select City</option>
-                {province && Object.keys(locationData[province]).map(c => (
-                  <option key={c} value={c}>{c}</option>
+                {citiesForProvince.map(item => (
+                  <option key={item.id} value={item.name}>{item.name}</option>
                 ))}
               </select>
               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -526,8 +597,8 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
                 disabled={!city}
               >
                 <option value="">Select Community</option>
-                {city && locationData[province][city].map(comm => (
-                  <option key={comm} value={comm}>{comm}</option>
+                {communitiesForCity.map(item => (
+                  <option key={item.id} value={item.name}>{item.name}</option>
                 ))}
               </select>
               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -548,7 +619,7 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
                 placeholder="Your location"
               />
             </div>
-            <div className="flex-1 relative">
+            <div className="flex-none w-full md:w-40 relative">
               <div className="relative">
                 <select
                   className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition appearance-none"
@@ -580,6 +651,15 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
             Search
           </button>
         </div>
+        {hasSearchValue && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="text-green-600 font-bold hover:underline px-4 py-2 cursor-pointer whitespace-nowrap"
+          >
+            Clear All
+          </button>
+        )}
       </form>
     </div>
   );
@@ -588,7 +668,9 @@ const SearchBar = ({ onSearch, searchType, setSearchType }) => {
 /* provider card */
 
 const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) => {
-  const addressEntry = addresses.find((a) => a.providerId === provider.id);
+  const { agencies, addresses, providerAddresses } = useContext(DataContext);
+  const providerAddressLink = providerAddresses.find((pa) => pa.providerId === provider.id);
+  const addressEntry = providerAddressLink ? addresses.find((a) => a.id === providerAddressLink.addressId) : null;
   const agency = agencies.find((a) => a.id === provider.agencyId);
   const navigate = useNavigate();
 
@@ -598,48 +680,30 @@ const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) =>
       <div className="flex justify-between items-start pt-3 sm:pt-4 px-3 sm:px-4 mb-2 ml-[80px] sm:ml-[104px]">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-green-600 uppercase tracking-widest">{provider.type}</span>
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              onAgesClick(provider);
-            }}
-            className="bg-blue-50 text-blue-700 text-xs font-bold px-2 py-1 rounded-full border-2 border-blue-600 uppercase tracking-tight hover:bg-blue-600 hover:text-white transition cursor-pointer"
-          >
-            Ages Served
-          </button>
           {provider.type === "Licensed Home-based" && agency && (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onAgencyClick(agency);
-              }}
-              className="bg-blue-50 text-blue-700 text-xs font-bold px-2 py-1 rounded-full border-2 border-blue-600 uppercase tracking-tight hover:bg-blue-600 hover:text-white transition cursor-pointer"
+            <Link 
+              to={`/provider/${provider.id}#contact`}
+              className="text-blue-600 text-xs font-bold uppercase tracking-tight hover:text-blue-500 hover:underline transition"
             >
-              Agency: {agency.name}
-            </button>
+              with {agency.name}
+            </Link>
           )}
         </div>
         <div>
           {provider.spotsAvailable > 0 ? (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onSpotsClick(provider);
-              }}
-              className="bg-green-50 text-green-700 text-xs font-bold px-2 py-1 rounded-full border-2 border-green-600 uppercase tracking-tight hover:bg-green-600 hover:text-white transition cursor-pointer"
+            <Link 
+              to={`/provider/${provider.id}#availability`}
+              className="text-green-700 text-xs font-bold uppercase tracking-tight hover:text-green-600 hover:underline transition"
             >
               {provider.spotsAvailable} spots available
-            </button>
+            </Link>
           ) : (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/waitlist/${provider.id}`);
-              }}
-              className="bg-red-50 text-red-600 text-xs font-bold px-2 py-1 rounded-full border-2 border-red-600 uppercase tracking-tight hover:bg-red-600 hover:text-white transition cursor-pointer"
+            <Link 
+              to={`/waitlist/${provider.id}`}
+              className="text-red-600 text-xs font-bold uppercase tracking-tight hover:text-red-500 hover:underline transition"
             >
               Waitlist
-            </button>
+            </Link>
           )}
         </div>
       </div>
@@ -679,30 +743,21 @@ const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) =>
 
           <div className="border-b border-blue-300 w-full mb-3"></div>
           
-          <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
             <div className="flex flex-wrap gap-1.5">
-              {provider.tags.slice(0, 2).map(tag => (
-                <span key={tag} className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[11px] font-bold uppercase rounded-md">
-                  {tag}
-                </span>
-              ))}
-              {provider.mealsProvided && (
-                <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[11px] font-bold uppercase rounded-md">
-                  Meals Provided
-                </span>
-              )}
-              {provider.snackProvided && (
-                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[11px] font-bold uppercase rounded-md">
-                  Snacks Provided
-                </span>
-              )}
+              <Link 
+                to={`/provider/${provider.id}#ages-served`}
+                className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[11px] font-bold uppercase rounded-md hover:bg-purple-100 hover:text-purple-700 transition"
+              >
+                Ages Served
+              </Link>
             </div>
 
             <button 
               onClick={() => navigate(`/provider/${provider.id}`)}
               className="text-green-600 text-sm font-bold hover:underline cursor-pointer"
             >
-              View Profile →
+              More info →
             </button>
           </div>
         </div>
@@ -727,32 +782,20 @@ const Footer = () => (
             </div>
             <span className="text-2xl font-bold text-white">PickAChildcare</span>
           </div>
-          <p className="max-w-sm text-gray-400">Making it easier for parents to find the perfect care for their children. Trusted by thousands of families nationwide.</p>
+          <p className="max-w-sm text-gray-400">Making it easier for parents to find the perfect care for their children.</p>
         </div>
         <div>
-          <h4 className="text-white font-bold mb-4 uppercase text-sm tracking-widest">For Parents</h4>
+          <h4 className="text-white font-bold mb-4 uppercase text-sm tracking-widest">Explore</h4>
           <ul className="space-y-2">
-            <li><a href="#" className="hover:text-white transition">Search Providers</a></li>
-            <li><a href="#" className="hover:text-white transition">Safety Guides</a></li>
-            <li><a href="#" className="hover:text-white transition">Resources</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4 className="text-white font-bold mb-4 uppercase text-sm tracking-widest">Company</h4>
-          <ul className="space-y-2">
-            <li><a href="#" className="hover:text-white transition">About Us</a></li>
-            <li><a href="#" className="hover:text-white transition">Contact</a></li>
-            <li><a href="#" className="hover:text-white transition">Privacy Policy</a></li>
+            <li><Link to="/" className="hover:text-white transition">Providers</Link></li>
+            <li><Link to="/agencies" className="hover:text-white transition">Agencies</Link></li>
+            <li><Link to="/parents" className="hover:text-white transition">Parents</Link></li>
+            <li><Link to="/resources" className="hover:text-white transition">Resources</Link></li>
           </ul>
         </div>
       </div>
       <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
         <p className="text-sm text-gray-500">© 2025 PickAChildcare Inc. All rights reserved.</p>
-        <div className="flex space-x-6 mt-4 md:mt-0">
-          <a href="#" className="text-gray-500 hover:text-white transition">Twitter</a>
-          <a href="#" className="text-gray-500 hover:text-white transition">Instagram</a>
-          <a href="#" className="text-gray-500 hover:text-white transition">Facebook</a>
-        </div>
       </div>
     </div>
   </footer>
@@ -791,14 +834,19 @@ const AccordionItem = ({ title, children, defaultOpen = false }) => {
   );
 };
 
-const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
-  const agesServed = [
-    "Infant (0-12 month)",
-    "Pre-toddler (1-17 months)",
-    "Toddler (18 months - 2 yrs)",
-    "Preschool (3 yrs - 4yrs)",
-    "School (5 yrs and older)"
-  ];
+const SidebarFilters = ({ filters, setFilters, childcareTypes, agesServed, scheduleOptions }) => {
+  const orderedChildcareTypes = [...childcareTypes];
+  const privateDayhomeIndex = orderedChildcareTypes.indexOf('Private Dayhome');
+  if (privateDayhomeIndex !== -1) {
+    orderedChildcareTypes.splice(privateDayhomeIndex, 1);
+    const licensedHomeBasedIndex = orderedChildcareTypes.indexOf('Licensed Home-based');
+    if (licensedHomeBasedIndex !== -1) {
+      orderedChildcareTypes.splice(licensedHomeBasedIndex + 1, 0, 'Private Dayhome');
+    } else {
+      orderedChildcareTypes.splice(privateDayhomeIndex, 0, 'Private Dayhome');
+    }
+  }
+
   const mealOptions = [
     "Meals Provided",
     "Snack Provided"
@@ -806,10 +854,6 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
 
   const toggleSpots = () => {
     setFilters({ ...filters, spotsOnly: !filters.spotsOnly });
-  };
-
-  const toggleRegistered = () => {
-    setFilters({ ...filters, registeredOnly: !filters.registeredOnly });
   };
 
   const toggleType = (type) => {
@@ -832,15 +876,6 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
       : [...filters.mealOptions, option];
     setFilters({ ...filters, mealOptions: newMeals });
   };
-
-  const scheduleOptions = [
-    "Overnight",
-    "Before School",
-    "After School",
-    "Weekend",
-    "Drop-in",
-    "Open Holidays"
-  ];
 
   const toggleScheduleOption = (option) => {
     const newSchedules = filters.scheduleOptions.includes(option)
@@ -875,7 +910,7 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
 
         <AccordionItem title="Childcare Type">
           <div className="space-y-2">
-            {availableTypes.map(type => (
+            {orderedChildcareTypes.map(type => (
               <React.Fragment key={type}>
                 <label className="flex items-center group cursor-pointer">
                   <input
@@ -886,17 +921,6 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
                   />
                   <span className="ml-3 text-sm text-gray-600 group-hover:text-green-600 transition">{type}</span>
                 </label>
-                {type === "Licensed Home-based" && (
-                  <label className="flex items-center group cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded text-green-600 border-gray-300 focus:ring-green-500 transition cursor-pointer"
-                      checked={filters.registeredOnly}
-                      onChange={toggleRegistered}
-                    />
-                    <span className="ml-3 text-sm text-gray-600 group-hover:text-green-600 transition">Registered with the City</span>
-                  </label>
-                )}
               </React.Fragment>
             ))}
           </div>
@@ -934,7 +958,7 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
           </div>
         </AccordionItem>
 
-        <AccordionItem title="Other Schedule Options">
+        <AccordionItem title="Schedule Options">
           <div className="space-y-2">
             {scheduleOptions.map(option => (
               <label key={option} className="flex items-center group cursor-pointer">
@@ -949,13 +973,11 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
             ))}
           </div>
         </AccordionItem>
-
-
       </div>
 
       <div className="pt-2">
         <button
-          onClick={() => setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], rating: 0, spotsOnly: false, registeredOnly: false })}
+          onClick={() => setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], rating: 0, spotsOnly: false })}
           className="w-full py-3 text-sm font-bold text-gray-500 hover:text-green-600 border border-gray-200 hover:border-green-600 rounded-xl transition"
         >
           Reset Filters
@@ -965,18 +987,25 @@ const SidebarFilters = ({ filters, setFilters, availableTypes }) => {
   );
 };
 
-const ListView = ({ providers, onAgencyClick, onAgesClick, onSpotsClick }) => (
-  <div className="grid grid-cols-1 gap-6 max-w-3xl mx-auto">
-    {providers.map(provider => (
-      <ProviderCard 
-        key={provider.id} 
-        provider={provider} 
-        onAgencyClick={onAgencyClick} 
-        onAgesClick={onAgesClick}
-        onSpotsClick={onSpotsClick}
-      />
-    ))}
-  </div>
+const ListView = ({ providers, onAgencyClick, onAgesClick, onSpotsClick, firstProviderRef }) => (
+  <PaginatedList
+    key={providers.map(p => p.id).join(',')}
+    items={providers}
+    renderPage={(pageProviders) => (
+      <div className="grid grid-cols-1 gap-6 max-w-3xl mx-auto">
+        {pageProviders.map((provider, index) => (
+          <div key={provider.id} ref={index === 0 ? firstProviderRef : undefined}>
+            <ProviderCard 
+              provider={provider} 
+              onAgencyClick={onAgencyClick} 
+              onAgesClick={onAgesClick}
+              onSpotsClick={onSpotsClick}
+            />
+          </div>
+        ))}
+      </div>
+    )}
+  />
 );
 
 const ChangeView = ({ center }) => {
@@ -1004,7 +1033,7 @@ const iconMapping = {
   'Licensed Home-based': { color: '#059669', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>' },
   'Preschool': { color: '#7c3aed', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>' },
   'Nursery': { color: '#db2777', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8c-1.657 0-3 1.343-3 3s1.343 3 3 3 3-1.343 3-3-1.343-3-3-3z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 12h-2m-2 0H5a2 2 0 00-2 2v2a2 2 0 002 2h14a2 2 0 002-2v-2a2 2 0 00-2-2z" /></svg>' },
-  'After-School': { color: '#ea580c', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>' },
+  'Out of School Care': { color: '#ea580c', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>' },
   'Montessori': { color: '#4f46e5', html: '<svg class="marker-icon" fill="none" viewBox="0 0 24 24" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>' }
 };
 
@@ -1021,14 +1050,19 @@ const createCustomIcon = (type, isSelected) => {
 };
 
 const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyClick, onSpotsClick }) => {
+  const data = useContext(DataContext);
+  const { agencies, addresses, providerAddresses } = data;
   const defaultCenter = [40.7128, -74.0060]; // NYC default
   const navigate = useNavigate();
 
   const getProviderAddress = (providerId) => {
-    return addresses.find(a => a.providerId === providerId);
+    const providerAddressLink = providerAddresses.find(pa => pa.providerId === providerId);
+    return providerAddressLink ? addresses.find(a => a.id === providerAddressLink.addressId) : null;
   };
 
-  const firstProviderAddress = providers.length > 0 ? getProviderAddress(providers[0].id) : null;
+  const firstProviderAddress = providers
+    .map(provider => getProviderAddress(provider.id))
+    .find(address => Number.isFinite(address?.coordinates?.lat) && Number.isFinite(address?.coordinates?.lng));
   const center = firstProviderAddress 
     ? [firstProviderAddress.coordinates.lat, firstProviderAddress.coordinates.lng]
     : defaultCenter;
@@ -1048,7 +1082,7 @@ const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyCli
         <ChangeView center={center} />
         {providers.map((provider) => {
           const addressEntry = getProviderAddress(provider.id);
-          if (!addressEntry) return null;
+          if (!addressEntry || !Number.isFinite(addressEntry.coordinates?.lat) || !Number.isFinite(addressEntry.coordinates?.lng)) return null;
           
           return (
             <Marker 
@@ -1073,28 +1107,22 @@ const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyCli
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">{provider.type}</span>
                       {provider.type === "Licensed Home-based" && (
-                        <button 
-                          onClick={() => {
-                            const agency = agencies.find(a => a.id === provider.agencyId);
-                            if (agency) onAgencyClick(agency);
-                          }}
-                          className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full border-2 border-blue-600 uppercase tracking-tight hover:bg-blue-600 hover:text-white transition cursor-pointer"
+                        <Link 
+                          to={`/provider/${provider.id}#contact`}
+                          className="text-blue-600 text-[10px] font-bold uppercase tracking-tight hover:text-blue-500 hover:underline transition"
                         >
-                          Agency: {agencies.find(a => a.id === provider.agencyId)?.name}
-                        </button>
+                          with {agencies.find(a => a.id === provider.agencyId)?.name}
+                        </Link>
                       )}
                     </div>
                     <div>
                       {provider.spotsAvailable > 0 ? (
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSpotsClick(provider);
-                          }}
-                          className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full border-2 border-green-600 uppercase tracking-tight hover:bg-green-600 hover:text-white transition cursor-pointer"
+                        <Link 
+                          to={`/provider/${provider.id}#availability`}
+                          className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full border-2 border-green-600 uppercase tracking-tight hover:bg-green-600 hover:text-white transition"
                         >
                           {provider.spotsAvailable} spots
-                        </button>
+                        </Link>
                       ) : (
                         <button 
                           onClick={(e) => {
@@ -1133,62 +1161,112 @@ const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyCli
   );
 };
 
+const parentSteps = [
+  {
+    id: 'search',
+    title: 'Step 1. Search',
+    iconBg: 'bg-green-100 text-green-600',
+    iconPaths: ['M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'],
+    description: 'Select the way you would like to find a provider, for example, by nearby location, by Province/City/Community, by Agency or By Provider name. Then, filter by childcare type, age group, and availability to find exactly what you need.',
+  },
+  {
+    id: 'review',
+    title: 'Step 2. Review',
+    iconBg: 'bg-blue-100 text-blue-600',
+    iconPaths: [
+      'M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+      'M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z',
+    ],
+    description: "Explore detailed profiles, check real-time spot availability, and view photos. Learn about the provider's philosophy and features.",
+  },
+  {
+    id: 'connect',
+    title: 'Step 3. Connect',
+    iconBg: 'bg-purple-100 text-purple-600',
+    iconPaths: ['M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
+    description: 'Contact providers directly or join waitlists. Get all the information you need to make the best choice for your child.',
+  },
+];
+
 const ParentsPage = () => {
+  const [openStep, setOpenStep] = useState(parentSteps[0].id);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-      <div className="text-center mb-16">
-        <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl tracking-tight mb-4 uppercase">
-          How it Works for Parents
-        </h1>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Finding the right childcare for your family shouldn't be a struggle. We've simplified the process into three easy steps.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-        {/* Step 1 */}
-        <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-          <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center text-green-600 mb-6">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-4 uppercase">1. Search</h3>
-          <p className="text-gray-600">
-            Enter your location or search by provider name. Filter by childcare type, age group, and availability to find exactly what you need.
+    <>
+      <section
+        className="relative bg-green-800 pt-12 pb-16 text-center text-white sm:pb-20 md:pt-20"
+        style={{
+          backgroundImage: `url(${parentsHero})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        <div className="absolute inset-0 bg-green-900/60 pointer-events-none"></div>
+        <div className="absolute inset-0 overflow-hidden opacity-10 pointer-events-none">
+          <div className="absolute top-10 left-10 h-64 w-64 rounded-full bg-white blur-3xl"></div>
+          <div className="absolute right-10 bottom-10 h-96 w-96 rounded-full bg-green-400 blur-3xl"></div>
+        </div>
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <h1 className="mb-4 text-3xl font-extrabold tracking-tight uppercase sm:text-4xl">
+            How it Works for Parents
+          </h1>
+          <p className="mx-auto max-w-2xl text-lg text-green-50 sm:text-xl">
+            Finding the right childcare for your family shouldn't be a struggle. We've simplified the process into three easy steps.
           </p>
         </div>
+      </section>
 
-        {/* Step 2 */}
-        <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-          <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 mb-6">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-4 uppercase">2. Review</h3>
-          <p className="text-gray-600">
-            Explore detailed profiles, check real-time spot availability, and view photos. Learn about the provider's philosophy and features.
-          </p>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
 
-        {/* Step 3 */}
-        <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-          <div className="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 mb-6">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-4 uppercase">3. Connect</h3>
-          <p className="text-gray-600">
-            Contact providers directly or join waitlists. Get all the information you need to make the best choice for your child.
-          </p>
-        </div>
+      <div className="mx-auto max-w-3xl space-y-4">
+        {parentSteps.map((step) => {
+          const isOpen = openStep === step.id;
+          return (
+            <div key={step.id} className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition-shadow duration-300 hover:shadow-xl">
+              <h3>
+                <button
+                  type="button"
+                  id={`step-header-${step.id}`}
+                  aria-expanded={isOpen}
+                  aria-controls={`step-panel-${step.id}`}
+                  onClick={() => setOpenStep(isOpen ? null : step.id)}
+                  className="flex w-full cursor-pointer items-center gap-4 p-6 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-green-600"
+                >
+                  <span className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl ${step.iconBg}`}>
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      {step.iconPaths.map((d) => (
+                        <path key={d} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={d} />
+                      ))}
+                    </svg>
+                  </span>
+                  <span className="flex-1 text-xl font-bold uppercase text-gray-900">{step.title}</span>
+                  <svg
+                    className={`h-5 w-5 flex-shrink-0 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </h3>
+              <div
+                id={`step-panel-${step.id}`}
+                role="region"
+                aria-labelledby={`step-header-${step.id}`}
+                hidden={!isOpen}
+                className="px-6 pb-6 pl-[88px] text-lg leading-relaxed text-gray-600 sm:text-xl"
+              >
+                <p>{step.description}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
       
       <div className="mt-20 bg-green-600 rounded-3xl p-12 text-center text-white relative overflow-hidden">
@@ -1201,30 +1279,169 @@ const ParentsPage = () => {
         <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 rounded-full blur-3xl"></div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
 const ProviderDetails = ({ onAgencyClick }) => {
+  const { providers, agencies, addresses, providerAddresses, spotsAvailable, loading, error } = useContext(DataContext);
   const { id } = useParams();
+  const location = useLocation();
   const providerId = parseInt(id);
   const provider = providers.find(p => p.id === providerId);
-  const address = addresses.find(a => a.providerId === provider?.id);
+  const providerAddressLink = provider ? providerAddresses.find(pa => pa.providerId === provider.id) : null;
+  const address = providerAddressLink ? addresses.find(a => a.id === providerAddressLink.addressId) : null;
   const agency = agencies.find(a => a.id === provider?.agencyId);
   const providerSpots = spotsAvailable.filter(s => s.providerId === providerId);
   const navigate = useNavigate();
+  const [activeSection, setActiveSection] = useState('overview');
+  const sectionRefs = useRef({});
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [id]);
 
+  // Scroll to hash section (e.g., #availability) after rendering
+  useEffect(() => {
+    if (location.hash) {
+      const sectionId = location.hash.replace('#', '');
+      const timer = setTimeout(() => {
+        const el = sectionRefs.current[sectionId];
+        if (el) {
+          const offset = 90;
+          const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+          window.scrollTo({ top, behavior: 'smooth' });
+          setActiveSection(sectionId);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [location.hash, id]);
+
+  // Build table of contents based on available sections
+  const tableOfContents = React.useMemo(() => {
+    const sections = [
+      { id: 'overview', label: 'Overview', icon: 'home' },
+      { id: 'about', label: 'About', icon: 'info' },
+      { id: 'ages-served', label: 'Ages Served', icon: 'users' },
+    ];
+    if (provider?.scheduleOptions?.length > 0) {
+      sections.push({ id: 'schedule-options', label: 'Schedule Options', icon: 'clock' });
+    }
+    if (providerSpots.length > 0 || provider?.spotsAvailable > 0) {
+      sections.push({ id: 'availability', label: `Availability (${provider.spotsAvailable} Spots)`, icon: 'calendar' });
+    }
+    if (address) {
+      sections.push({ id: 'location', label: 'Location', icon: 'map' });
+    }
+    if (provider?.operating_hours?.length > 0) {
+      sections.push({ id: 'operating-hours', label: 'Operating Hours', icon: 'clock' });
+    }
+    if (provider?.phone || (provider?.type === "Licensed Home-based" && agency)) {
+      sections.push({ id: 'contact', label: 'Contact', icon: 'phone' });
+    }
+    return sections;
+  }, [provider?.operating_hours?.length, providerSpots.length, address, provider?.type, provider?.phone, agency, provider?.scheduleOptions?.length, provider?.spotsAvailable]);
+
+  // Intersection Observer for active section detection
+  useEffect(() => {
+    const handleIntersect = (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(handleIntersect, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0.1,
+    });
+
+    tableOfContents.forEach(({ id }) => {
+      const el = sectionRefs.current[id];
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [tableOfContents]);
+
+  const scrollToSection = (sectionId) => {
+    const el = sectionRefs.current[sectionId];
+    if (el) {
+      const offset = 90;
+      const top = el.getBoundingClientRect().top + window.pageYOffset - offset;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  };
+
+  const getIcon = (iconName) => {
+    switch (iconName) {
+      case 'home':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        );
+      case 'info':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'users':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        );
+      case 'clock':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        );
+      case 'calendar':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        );
+      case 'map':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        );
+      case 'tag':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+        );
+      case 'phone':
+        return (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  if (loading) return <div className="p-20 text-center">Loading providers...</div>;
+  if (error) return <div className="p-20 text-center text-red-600">{error}</div>;
   if (!provider) return <div className="p-20 text-center">Provider not found</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
+      {/* Back Button */}
       <button 
         onClick={() => navigate(-1)}
-        className="mb-8 flex items-center gap-2 text-green-600 font-bold hover:underline cursor-pointer"
+        className="mb-6 flex items-center gap-2 text-green-600 font-bold hover:underline cursor-pointer"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -1232,15 +1449,17 @@ const ProviderDetails = ({ onAgencyClick }) => {
         Back to Search
       </button>
 
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-        <div className="h-64 sm:h-96 w-full relative flex items-center justify-center">
+      {/* Hero Section */}
+      <div className="bg-white rounded-[5px] shadow-xl overflow-hidden border border-gray-100 mb-8">
+        <div className="h-56 sm:h-80 w-full relative flex items-center justify-center">
           <img src={provider.image} alt={provider.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <h1 className="text-3xl sm:text-5xl font-bold text-white bg-black/40 backdrop-blur-md px-8 py-4 rounded-2xl shadow-2xl text-center border border-white/10 uppercase tracking-tight">
+            <h1 className="text-3xl sm:text-5xl font-bold text-white bg-black/40 backdrop-blur-md px-8 py-4 rounded-[5px] shadow-2xl text-center border border-white/10 uppercase tracking-tight">
               {provider.name}
             </h1>
           </div>
-          <div className="absolute top-6 left-6 flex flex-wrap gap-2">
+          <div className="absolute top-4 left-4 flex flex-wrap gap-2">
             <span className="bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-green-600 uppercase tracking-widest shadow-sm">
               {provider.type}
             </span>
@@ -1253,59 +1472,266 @@ const ProviderDetails = ({ onAgencyClick }) => {
               </button>
             )}
           </div>
+          <div className="absolute top-4 right-4">
+            {provider.spotsAvailable > 0 ? (
+              <span className="bg-green-600/90 backdrop-blur px-4 py-2 rounded-full text-sm font-bold text-white uppercase tracking-tight shadow-sm">
+                {provider.spotsAvailable} Spots Available
+              </span>
+            ) : (
+              <button 
+                onClick={() => navigate(`/waitlist/${provider.id}`)}
+                className="bg-red-600/90 backdrop-blur px-4 py-2 rounded-full text-sm font-bold text-white uppercase tracking-tight shadow-sm hover:bg-red-700 transition cursor-pointer"
+              >
+                Waitlist Only — Join Now
+              </button>
+            )}
+          </div>
         </div>
+      </div>
 
-        <div className="p-8 sm:p-12">
-          <div className="flex flex-col sm:flex-row justify-between items-start gap-6 mb-8">
-            <div>
-              <p className="text-gray-500 flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Main Layout: Sidebar + Content */}
+      <div className="flex flex-col lg:flex-row gap-8">
+        {/* Sidebar Table of Contents */}
+        <aside className="w-full lg:w-64 flex-shrink-0">
+          <div className="bg-white rounded-[5px] p-5 border border-gray-300 shadow-md sticky top-20">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-3">Table of Contents</h3>
+            <nav className="space-y-1">
+              {tableOfContents.map(({ id, label, icon }) => (
+                <button
+                  key={id}
+                  onClick={() => scrollToSection(id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[5px] text-sm font-medium transition-all duration-200 cursor-pointer ${
+                    activeSection === id
+                      ? 'bg-green-50 text-green-700 border-l-[3px] border-green-600 shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-[3px] border-transparent'
+                  }`}
+                >
+                  <span className={activeSection === id ? 'text-green-600' : 'text-gray-400'}>
+                    {getIcon(icon)}
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </nav>
+
+            {/* Quick CTA in sidebar */}
+            {/*
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              {provider.spotsAvailable > 0 ? (
+                <div className="bg-green-50 rounded-[5px] p-4 text-center">
+                  <p className="text-green-700 font-bold text-sm mb-2">{provider.spotsAvailable} Spots Available</p>
+                  <p className="text-green-600 text-xs">Contact provider to enroll</p>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => navigate(`/waitlist/${provider.id}`)}
+                  className="w-full py-3 bg-red-600 text-white text-sm font-bold rounded-[5px] hover:bg-red-700 transition shadow-sm cursor-pointer"
+                >
+                  Join Waitlist
+                </button>
+              )}
+            </div>
+            */}
+            <button
+              onClick={() => navigate(`/book-tour/${provider.id}`)}
+              className="w-full mt-4 py-3 bg-green-600 text-white text-sm font-bold rounded-[5px] hover:bg-green-700 transition shadow-sm cursor-pointer"
+            >
+              Book a Tour
+            </button>
+            {/* Back to Search */}
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <button 
+                onClick={() => navigate('/')}
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-gray-500 hover:text-green-600 transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Search
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* Content Area */}
+        <div className="flex-1 min-w-0 space-y-8">
+          {/* Overview Section */}
+          <div 
+            id="overview"
+            ref={(el) => { sectionRefs.current['overview'] = el; }}
+            className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+          >
+                        <h2 className="text-2xl font-bold text-white mb-3 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+              <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </span>
+              Overview
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Availability</label>
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-base font-bold ${provider.spotsAvailable > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {provider.spotsAvailable > 0 ? `${provider.spotsAvailable} Spots` : 'Waitlist Only'}
+                  </p>
+                  {provider.spotsAvailable === 0 && (
+                    <button 
+                      onClick={() => navigate(`/waitlist/${provider.id}`)}
+                      className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-[5px] hover:bg-red-700 transition shadow-sm cursor-pointer whitespace-nowrap"
+                    >
+                      Join Waitlist
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">City</label>
+                <p className="text-base font-bold text-gray-900">{provider.location}</p>
+              </div>
+              <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Max Capacity</label>
+                <p className="text-base font-bold text-gray-900">{provider.maxCapacity} children</p>
+              </div>
+              <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Meals</label>
+                <p className="text-base font-bold text-gray-900">
+                  {provider.mealsProvided && provider.snackProvided ? 'Meals & Snacks provided' : provider.mealsProvided ? 'Meals Provided' : provider.snackProvided ? 'Snacks Provided' : 'Not Provided'}
+                </p>
+              </div>
+              <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Type</label>
+                <p className="text-base font-bold text-gray-900">{provider.type}</p>
+              </div>
+            </div>
+            {address && (
+              <div className="mt-4 bg-gray-50 p-4 rounded-[5px] border border-gray-100 flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                {address?.fullAddress}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 flex flex-col justify-center">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Availability</label>
-              <div className="flex items-center justify-between">
-                <p className={`text-lg font-bold ${provider.spotsAvailable > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {provider.spotsAvailable > 0 ? `${provider.spotsAvailable} Spots Available` : 'Waitlist Only'}
-                </p>
-                {provider.spotsAvailable === 0 && (
-                  <button 
-                    onClick={() => navigate(`/waitlist/${provider.id}`)}
-                    className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition shadow-sm cursor-pointer"
-                  >
-                    Join Waitlist
-                  </button>
-                )}
+                <p className="text-gray-600 font-medium text-sm">{address.fullAddress}</p>
               </div>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Location</label>
-              <p className="text-lg font-bold text-gray-900">{provider.location}</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Max Capacity</label>
-              <p className="text-lg font-bold text-gray-900">{provider.maxCapacity} children</p>
-            </div>
+            )}
           </div>
 
-          <div className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">About this provider</h2>
+          {/* About Section */}
+          <div 
+            id="about"
+            ref={(el) => { sectionRefs.current['about'] = el; }}
+            className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+          >
+                        <h2 className="text-2xl font-bold text-white mb-2 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+              <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              About this Provider
+            </h2>
             <p className="text-gray-600 leading-relaxed text-lg">
               {provider.description}
             </p>
+            {(() => {
+              const rawWebsite = typeof provider.website === 'string' ? provider.website.trim() : '';
+              const website = rawWebsite
+                ? (/^[a-z][a-z0-9+.-]*:/i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`)
+                : '';
+              if (!/^https?:\/\//i.test(website)) return null;
+              return (
+                <p className="mt-6 text-base break-all">
+                  <span className="font-semibold text-gray-700">Website: </span>
+                  <a
+                    href={website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-700 underline hover:text-green-800"
+                  >
+                    {website}
+                  </a>
+                </p>
+              );
+            })()}
           </div>
 
-          {providerSpots.length > 0 && (
-            <div className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Current Availability</h2>
-              <div className="overflow-x-auto rounded-2xl border border-gray-100">
+          {/* Ages Served Section */}
+          <div 
+            id="ages-served"
+            ref={(el) => { sectionRefs.current['ages-served'] = el; }}
+            className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+          >
+                        <h2 className="text-2xl font-bold text-white mb-2 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+              <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </span>
+              Ages Served
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {provider.AgesServed && provider.AgesServed.map((age, index) => (
+                <div key={index} className="flex items-center gap-3 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                  <div className="bg-green-100 p-1.5 rounded-full text-green-600 flex-shrink-0">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-900 font-bold text-sm">{age}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Schedule Options Section */}
+          {provider.scheduleOptions && provider.scheduleOptions.length > 0 && (
+            <div
+              id="schedule-options"
+              ref={(el) => { sectionRefs.current['schedule-options'] = el; }}
+              className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+            >
+              <h2 className="text-2xl font-bold text-white mb-2 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+                <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+                Schedule Options
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {provider.scheduleOptions.map((option) => (
+                  <div key={option} className="flex items-center gap-3 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                    <div className="bg-green-100 p-1.5 rounded-full text-green-600 flex-shrink-0">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-gray-900 font-bold text-sm">{option}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Current Availability Section */}
+          {(providerSpots.length > 0 || provider.spotsAvailable > 0) && (
+            <div 
+              id="availability"
+              ref={(el) => { sectionRefs.current['availability'] = el; }}
+              className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+            >
+                            <h2 className="text-2xl font-bold text-white mb-3 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+                <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </span>
+              Current Availability ({provider.spotsAvailable} Spots)
+            </h2>
+              {providerSpots.length === 0 ? (
+                <p className="text-gray-500 py-2">No detailed availability information provided.</p>
+              ) : (
+              <div className="overflow-x-auto rounded-[5px] border border-gray-100">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
@@ -1318,14 +1744,14 @@ const ProviderDetails = ({ onAgencyClick }) => {
                   <tbody className="divide-y divide-gray-50">
                     {providerSpots.map((spot) => (
                       <tr key={spot.id} className="hover:bg-gray-50/50 transition">
-                        <td className="px-6 py-4 font-bold text-gray-900">{spot.AgeServed}</td>
+                        <td className="px-6 py-4 font-bold text-gray-900">{spot.AgeAvailable}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-lg font-bold text-sm ${spot.partTime > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                          <span className={`px-2 py-1 rounded-[5px] font-bold text-sm ${spot.partTime > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                             {spot.partTime} spots
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-lg font-bold text-sm ${spot.fullTime > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                          <span className={`px-2 py-1 rounded-[5px] font-bold text-sm ${spot.fullTime > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                             {spot.fullTime} spots
                           </span>
                         </td>
@@ -1337,13 +1763,28 @@ const ProviderDetails = ({ onAgencyClick }) => {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 
+          {/* Location Section */}
           {address && (
-            <div className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Location</h2>
-              <div className="h-96 w-full rounded-3xl overflow-hidden border border-gray-100 shadow-inner z-0">
+            <div 
+              id="location"
+              ref={(el) => { sectionRefs.current['location'] = el; }}
+              className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+            >
+                            <h2 className="text-2xl font-bold text-white mb-3 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+                <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </span>
+              Location
+              </h2>
+              {Number.isFinite(address.coordinates?.lat) && Number.isFinite(address.coordinates?.lng) ? (
+              <div className="h-80 w-full rounded-[5px] overflow-hidden border border-gray-100 shadow-inner z-0">
                 <MapContainer 
                   center={[address.coordinates.lat, address.coordinates.lng]} 
                   zoom={15} 
@@ -1360,26 +1801,143 @@ const ProviderDetails = ({ onAgencyClick }) => {
                   />
                 </MapContainer>
               </div>
-              <p className="mt-4 text-gray-600 font-medium flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              ) : (
+                <p className="text-gray-500">Map coordinates are not available for this address.</p>
+              )}
+              <div className="mt-4 flex items-center gap-2 text-gray-600 font-medium">
+                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 {address.fullAddress}
-              </p>
+              </div>
             </div>
           )}
 
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Features & Tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {provider.tags.map(tag => (
-                <span key={tag} className="px-4 py-2 bg-green-50 text-green-700 font-bold rounded-xl text-sm uppercase tracking-wide">
-                  {tag}
+          {/* Operating Hours Section */}
+          {provider.operating_hours?.length > 0 && (
+            <div
+              id="operating-hours"
+              ref={(el) => { sectionRefs.current['operating-hours'] = el; }}
+              className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+            >
+              <h2 className="text-2xl font-bold text-white mb-3 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+                <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </span>
-              ))}
+                Operating Hours
+              </h2>
+              <div className="divide-y divide-gray-100 border border-gray-100 rounded-[5px]">
+                {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, i) => {
+                  const ranges = provider.operating_hours.filter(h => h.day_of_week === i);
+                  return (
+                    <div key={day} className="flex items-start justify-between gap-4 px-4 py-3">
+                      <span className="font-bold text-gray-900">{day}</span>
+                      <span className={ranges.length ? 'text-gray-700 text-right' : 'text-gray-400'}>
+                        {ranges.length
+                          ? ranges.map((h, idx) => (
+                              <span key={idx} className="block">{formatHoursTime(h.open_time)} – {formatHoursTime(h.close_time)}</span>
+                            ))
+                          : 'Closed'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Contact Section */}
+          {(provider.phone || (provider.type === "Licensed Home-based" && agency)) && (
+            <div 
+              id="contact"
+              ref={(el) => { sectionRefs.current['contact'] = el; }}
+              className="bg-white rounded-[5px] p-6 sm:p-8 border border-gray-300 shadow-md"
+            >
+                            <h2 className="text-2xl font-bold text-white mb-3 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 rounded-t-[5px] flex items-center gap-3 bg-green-600 px-6 py-3 relative">
+                <span className="bg-white/20 p-2 rounded-[5px] text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                </span>
+                Contact Information
+              </h2>
+              <div className="space-y-4">
+                {provider.phone && (
+                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                    <div className="bg-green-100 p-2 rounded-[5px] text-green-600">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Provider Phone</label>
+                      <a href={`tel:${provider.phone}`} className="text-gray-900 font-bold hover:text-green-600 transition">{provider.phone}</a>
+                    </div>
+                  </div>
+                )}
+                {provider.type === "Licensed Home-based" && agency && (
+                  <>
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                  <div className="bg-green-100 p-2 rounded-[5px] text-green-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Agency</label>
+                    <button 
+                      onClick={() => onAgencyClick(agency)}
+                      className="text-gray-900 font-bold hover:text-green-600 transition cursor-pointer"
+                    >
+                      {agency.name}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                  <div className="bg-green-100 p-2 rounded-[5px] text-green-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Phone</label>
+                    <a href={`tel:${agency.phone}`} className="text-gray-900 font-bold hover:text-green-600 transition">{agency.phone}</a>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                  <div className="bg-blue-100 p-2 rounded-[5px] text-blue-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 01-2-2V7a2 2 0 012-2H5a2 2 0 012 2v10a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Email</label>
+                    <a href={`mailto:${agency.email}`} className="text-gray-900 font-bold hover:text-green-600 transition">{agency.email}</a>
+                  </div>
+                </div>
+                {agency.website && (
+                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
+                    <div className="bg-purple-100 p-2 rounded-[5px] text-purple-600">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Website</label>
+                      <a href={agency.website} target="_blank" rel="noopener noreferrer" className="text-gray-900 font-bold hover:text-green-600 transition">
+                        {agency.website}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1387,54 +1945,172 @@ const ProviderDetails = ({ onAgencyClick }) => {
 };
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [providers, setProviders] = useState([]);
+  const [agencies, setAgencies] = useState([]);
+  const [addresses, setAddresses] = useState([]);
+  const [provinces, setProvinces] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [communities, setCommunities] = useState([]);
+  const [providerAddresses, setProviderAddresses] = useState([]);
+  const [spotsAvailable, setSpotsAvailable] = useState([]);
+  const [agesServed, setAgesServed] = useState([]);
+  const [childcareTypes, setChildcareTypes] = useState([]);
+  const [scheduleOptions, setScheduleOptions] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      fetchApi('providers'),
+      fetchApi('agencies'),
+      fetchApi('addresses'),
+      fetchApi('provinces'),
+      fetchApi('cities'),
+      fetchApi('communities'),
+      fetchApi('provider-addresses'),
+      fetchApi('spots-available'),
+      fetchApi('ages-served'),
+      fetchApi('childcare-types'),
+      fetchApi('schedule-options'),
+    ])
+      .then(([providerData, agencyData, addressData, provinceData, cityData, communityData, providerAddressData, spotData, ageData, childcareTypeData, scheduleOptionData]) => {
+        if (cancelled) return;
+        setProviders(providerData.map(normalizeProvider));
+        setAgencies(agencyData.map(agency => ({
+          ...agency,
+          providers: (agency.providers || []).map(normalizeProvider),
+        })));
+        setAddresses(addressData.map(normalizeAddress));
+        setProvinces(provinceData);
+        setCities(cityData);
+        setCommunities(communityData);
+        setProviderAddresses(providerAddressData.map(link => ({
+          ...link,
+          providerId: link.provider_id,
+          addressId: link.address_id,
+        })));
+        setSpotsAvailable(spotData.map(normalizeSpot));
+        const ageNames = ageData.map(age => age.name);
+        setAgesServed([
+          ...ageNames.filter(name => name === 'Baby (0 to 12 months)'),
+          ...ageNames.filter(name => name !== 'Baby (0 to 12 months)'),
+        ]);
+        setChildcareTypes(childcareTypeData.map(type => type.name));
+        setScheduleOptions(scheduleOptionData.map(option => option.name));
+        setDataError('');
+      })
+      .catch(err => {
+        if (!cancelled) setDataError(`Unable to load childcare data. ${err.message}`);
+      })
+      .finally(() => {
+        if (!cancelled) setDataLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
   const [hasSearched, setHasSearched] = useState(true);
   const [shouldScroll, setShouldScroll] = useState(false);
   const resultsRef = useRef(null);
+  const firstProviderRef = useRef(null);
+  const shouldScrollToAgencyProvider = useRef(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedAgency, setSelectedAgency] = useState(null);
   const [showAgesProvider, setShowAgesProvider] = useState(null);
   const [showSpotsProvider, setShowSpotsProvider] = useState(null);
   const [viewMode, setViewMode] = useState('list');
   const [searchType, setSearchType] = useState('Nearby');
+
+  // Auth state
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalView, setAuthModalView] = useState('login');
+  const [loggedInUser, setLoggedInUser] = useState(() => {
+    const username = localStorage.getItem('username');
+    const userType = localStorage.getItem('user_type');
+    return username ? { username, userType } : null;
+  });
+
+  const handleLoginSuccess = (username, userType, agencyId) => {
+    setLoggedInUser({ username, userType });
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('user_type');
+    localStorage.removeItem('agency_id');
+    setLoggedInUser(null);
+  };
+
+  const openLoginModal = () => {
+    setAuthModalView('login');
+    setShowAuthModal(true);
+  };
+
+  const openRegisterModal = () => {
+    setAuthModalView('signup');
+    setShowAuthModal(true);
+  };
   const [searchCriteria, setSearchCriteria] = useState({ 
     location: '', 
     coordinates: null,
     distance: '',
     province: '',
     city: '',
-    community: ''
+    community: '',
   });
   const [filters, setFilters] = useState({
     types: [],
     agesServed: [],
     mealOptions: [],
     scheduleOptions: [],
-    spotsOnly: false,
-    registeredOnly: false
+    spotsOnly: false
   });
 
-  const availableTypes = [...new Set(providers.map(p => p.type))].filter(type => type !== 'Montessori' && type !== 'Nursery');
+  const removeFilterValue = (key, value) => setFilters(f => ({ ...f, [key]: f[key].filter(v => v !== value) }));
+  const requestedAgencyId = Number(new URLSearchParams(location.search).get('agencyId'));
+  const agencyFilter = Number.isInteger(requestedAgencyId)
+    ? agencies.find(agency => agency.id === requestedAgencyId)
+    : null;
+  const activeSearchType = agencyFilter ? 'Agency' : searchType;
+
+  const selectedFilterChips = [
+    ...(filters.spotsOnly ? [{ key: 'spots', label: 'Spots available', remove: () => setFilters(f => ({ ...f, spotsOnly: false })) }] : []),
+    ...filters.types.map(v => ({ key: `types-${v}`, label: v, remove: () => removeFilterValue('types', v) })),
+    ...filters.agesServed.map(v => ({ key: `ages-${v}`, label: v, remove: () => removeFilterValue('agesServed', v) })),
+    ...filters.mealOptions.map(v => ({ key: `meals-${v}`, label: v, remove: () => removeFilterValue('mealOptions', v) })),
+    ...filters.scheduleOptions.map(v => ({ key: `schedule-${v}`, label: v, remove: () => removeFilterValue('scheduleOptions', v) })),
+  ];
 
   const filteredProviders = providers.filter(p => {
-    const address = addresses.find(a => a.providerId === p.id);
+    const paLink = providerAddresses.find(pa => pa.providerId === p.id);
+    const address = paLink ? addresses.find(a => a.id === paLink.addressId) : null;
     const searchTerm = (searchCriteria.location || '').trim().toLowerCase();
     
     let matchLocation = false;
-    if (searchType === 'Agency') {
-      const agency = agencies.find(a => a.name.toLowerCase().includes(searchTerm));
-      matchLocation = searchTerm === '' || (agency ? p.agencyId === agency.id : false);
-    } else if (searchType === 'Name') {
+    if (activeSearchType === 'Agency') {
+      if (agencyFilter) {
+        matchLocation = p.agencyId === agencyFilter.id;
+      } else {
+        const agency = agencies.find(a => a.name.toLowerCase().includes(searchTerm));
+        matchLocation = searchTerm === '' || (agency ? p.agencyId === agency.id : false);
+      }
+    } else if (activeSearchType === 'Name') {
       matchLocation = p.name.toLowerCase().includes(searchTerm);
-    } else if (searchType === 'Province/City') {
-      const matchP = !searchCriteria.province || (address && address.province === searchCriteria.province);
-      const matchC = !searchCriteria.city || (address && address.city === searchCriteria.city);
-      const matchComm = !searchCriteria.community || (address && address.community === searchCriteria.community);
-      // Only match if at least one criteria is selected, otherwise match none for this search type
+    } else if (activeSearchType === 'Province/City') {
+      const matchP = !searchCriteria.province || (address && normalizeProvince(address.province) === searchCriteria.province);
+      const matchC = !searchCriteria.city || (address && (address.city || '').trim() === searchCriteria.city);
+      const matchComm = !searchCriteria.community || (address && (address.community || '').trim() === searchCriteria.community);
       const hasSelection = searchCriteria.province || searchCriteria.city || searchCriteria.community;
-      matchLocation = hasSelection && matchP && matchC && matchComm;
+      matchLocation = !hasSelection || (matchP && matchC && matchComm);
     } else {
       // Nearby search logic
-      if (searchCriteria.coordinates && searchCriteria.distance && address) {
+        if (searchCriteria.coordinates && searchCriteria.distance && address &&
+          Number.isFinite(address.coordinates?.lat) && Number.isFinite(address.coordinates?.lng)) {
         const dist = calculateDistance(
           parseFloat(searchCriteria.coordinates.lat),
           parseFloat(searchCriteria.coordinates.lng),
@@ -1452,13 +2128,8 @@ export default function App() {
 
     const matchType = filters.types.length === 0 || filters.types.includes(p.type);
     const matchSpots = !filters.spotsOnly || p.spotsAvailable > 0;
-    const matchRegistered = !filters.registeredOnly || p.registeredWithCity;
 
-    // Logic for ages served - matches if any selected age is mentioned in tags
-    const matchAge = filters.agesServed.length === 0 || filters.agesServed.some(age => {
-      const shortAge = age.split(' ')[0].toLowerCase(); // e.g., "infant", "toddler"
-      return p.tags.some(tag => tag.toLowerCase().includes(shortAge));
-    });
+    const matchAge = filters.agesServed.length === 0 || filters.agesServed.some(age => (p.AgesServed || []).includes(age));
 
     // Logic for meal options - matches if all selected meal options are provided by the provider
     const matchMeals = filters.mealOptions.every(option => {
@@ -1467,15 +2138,17 @@ export default function App() {
       return true;
     });
 
-    // Logic for schedule options - matches if all selected schedule options are mentioned in tags
-    const matchSchedule = filters.scheduleOptions.every(option => {
-      return p.tags.some(tag => tag.toLowerCase().includes(option.toLowerCase()));
-    });
+    // Schedule options - provider must offer all selected options
+    const matchSchedule = filters.scheduleOptions.every(option => (p.scheduleOptions || []).includes(option));
 
-    return matchLocation && matchType && matchAge && matchMeals && matchSchedule && matchSpots && matchRegistered;
-  });
+    return matchLocation && matchType && matchAge && matchMeals && matchSchedule && matchSpots;
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
 
   const handleSearch = (criteria, triggerScroll = false) => {
+    if (agencyFilter && criteria.location !== agencyFilter.name) {
+      navigate('/', { replace: true });
+      setSearchType('Agency');
+    }
     setHasSearched(true);
     setSearchCriteria({ 
       location: '', 
@@ -1487,6 +2160,44 @@ export default function App() {
     });
     if (triggerScroll) setShouldScroll(true);
   };
+
+  const handleClearSearch = () => {
+    if (location.search) navigate('/', { replace: true });
+    if (agencyFilter) setSearchType('Agency');
+    setSearchCriteria({ location: '', coordinates: null, distance: '', province: '', city: '', community: '' });
+    setHasSearched(true);
+    setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], spotsOnly: false });
+  };
+
+  const handleSearchTypeChange = (type) => {
+    if (agencyFilter) navigate('/', { replace: true });
+    setSearchType(type);
+    setSearchCriteria({ location: '', coordinates: null, distance: '', province: '', city: '', community: '' });
+    setHasSearched(true);
+  };
+
+  const handleAgencyProvidersClick = () => {
+    shouldScrollToAgencyProvider.current = true;
+    setSearchType('Agency');
+    setSearchCriteria({ location: '', coordinates: null, distance: '', province: '', city: '', community: '' });
+    setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], spotsOnly: false });
+    setViewMode('list');
+    setHasSearched(true);
+  };
+
+  const firstFilteredProviderId = filteredProviders[0]?.id;
+
+  useEffect(() => {
+    if (!shouldScrollToAgencyProvider.current || !agencyFilter || dataLoading || !firstProviderRef.current) return;
+
+    const offset = 80;
+    const elementPosition = firstProviderRef.current.getBoundingClientRect().top;
+    window.scrollTo({
+      top: elementPosition + window.pageYOffset - offset,
+      behavior: 'smooth'
+    });
+    shouldScrollToAgencyProvider.current = false;
+  }, [agencyFilter, dataLoading, firstFilteredProviderId, viewMode]);
 
   useEffect(() => {
     if (shouldScroll && resultsRef.current) {
@@ -1503,21 +2214,30 @@ export default function App() {
   }, [shouldScroll]);
 
   return (
+    <DataContext.Provider value={{ providers, agencies, addresses, provinces, cities, communities, providerAddresses, spotsAvailable, loading: dataLoading, error: dataError }}>
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
-      <Navbar onSearchTypeChange={(type) => {
-        setSearchType(type);
-        handleSearch({}); // Clear criteria when switching types
-      }} />
+      <Navbar 
+        onLoginClick={openLoginModal}
+        onRegisterClick={openRegisterModal}
+        loggedInUser={loggedInUser}
+        onLogout={handleLogout}
+      />
       <AgencyModal agency={selectedAgency} onClose={() => setSelectedAgency(null)} />
       <AgesServedModal provider={showAgesProvider} onClose={() => setShowAgesProvider(null)} />
       <SpotsAvailableModal provider={showSpotsProvider} onClose={() => setShowSpotsProvider(null)} />
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)} 
+        initialView={authModalView}
+        onLoginSuccess={handleLoginSuccess}
+      />
 
       <Routes>
         <Route path="/" element={
           <main>
             {/* Hero Section */}
             <section 
-              className="pt-12 pb-20 md:pt-20 md:pb-32 text-center text-white relative bg-green-800"
+              className="pt-12 pb-20 md:pt-20 md:pb-24 text-center text-white relative bg-green-800"
               style={{
                 backgroundImage: `url(${leafBg})`,
                 backgroundSize: 'cover',
@@ -1531,20 +2251,53 @@ export default function App() {
                 <div className="absolute top-10 left-10 w-64 h-64 bg-white rounded-full blur-3xl"></div>
                 <div className="absolute bottom-10 right-10 w-96 h-96 bg-green-400 rounded-full blur-3xl"></div>
               </div>
-              <div className="w-full max-w-7xl mx-auto relative z-20 px-4">
-                <SearchBar onSearch={handleSearch} searchType={searchType} setSearchType={setSearchType} />
+              <div className="w-full max-w-7xl mx-auto relative z-20 px-4 sm:px-6 lg:px-8">
+                <div className="text-center mb-10">
+                  <h1 className="text-xl font-extrabold text-white sm:text-2xl tracking-tight mb-3 uppercase">
+                    Our Providers
+                  </h1>
+                  <p className="text-base text-green-50 max-w-2xl mx-auto">
+                    Browse licensed home-based childcare providers in your area.
+                  </p>
+                </div>
+                <SearchBar
+                  key={agencyFilter?.id ?? 'general-search'}
+                  onSearch={handleSearch}
+                  onClear={handleClearSearch}
+                  searchType={activeSearchType}
+                  setSearchType={handleSearchTypeChange}
+                  initialAgencyName={agencyFilter?.name || ''}
+                />
               </div>
             </section>
 
             {/* Results Section */}
-            {hasSearched && (
+            {dataLoading ? (
+              <section className="max-w-7xl mx-auto px-4 py-20 text-center text-gray-600">Loading childcare providers...</section>
+            ) : dataError ? (
+              <section className="max-w-7xl mx-auto px-4 py-20 text-center text-red-600">{dataError}</section>
+            ) : hasSearched && (
               <section ref={resultsRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 mt-12">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                   <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-                      Search Results
-                    </h2>
-                    <p className="text-gray-500 mt-1">Showing {filteredProviders.length} providers</p>
+                    <p className="text-xl sm:text-2xl text-gray-700">
+                      <span className="font-bold">Showing {filteredProviders.length} {filteredProviders.length === 1 ? 'provider' : 'providers'}</span>
+                    </p>
+                    {selectedFilterChips.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {selectedFilterChips.map(chip => (
+                          <button
+                            key={chip.key}
+                            onClick={chip.remove}
+                            aria-label={`Remove filter ${chip.label}`}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200 hover:bg-green-100 transition"
+                          >
+                            {chip.label}
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-4 w-full sm:w-auto">
@@ -1570,16 +2323,6 @@ export default function App() {
                       </button>
                     </div>
 
-                    <button 
-                      onClick={() => { 
-                        setSearchCriteria({ location: '', distance: '', province: '', city: '', community: '' }); 
-                        setHasSearched(false);
-                        setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], spotsOnly: false, registeredOnly: false });
-                      }}
-                      className="text-green-600 font-bold hover:underline ml-auto"
-                    >
-                      Clear All
-                    </button>
                   </div>
                 </div>
 
@@ -1590,7 +2333,9 @@ export default function App() {
                       <SidebarFilters 
                         filters={filters} 
                         setFilters={setFilters} 
-                        availableTypes={availableTypes} 
+                        childcareTypes={childcareTypes}
+                        agesServed={agesServed}
+                        scheduleOptions={scheduleOptions}
                       />
                     </div>
                   </aside>
@@ -1604,6 +2349,7 @@ export default function App() {
                           onAgencyClick={setSelectedAgency} 
                           onAgesClick={setShowAgesProvider}
                           onSpotsClick={setShowSpotsProvider}
+                          firstProviderRef={firstProviderRef}
                         />
                       ) : (
                         <MapView 
@@ -1627,12 +2373,18 @@ export default function App() {
             )}
           </main>
         } />
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/agencies" element={<AgenciesPage onAgencyProvidersClick={handleAgencyProvidersClick} />} />
+        <Route path="/resources" element={<ResourcesPage />} />
+        <Route path="/agency/:id" element={<AgencyDetails />} />
         <Route path="/parents" element={<ParentsPage />} />
         <Route path="/provider/:id" element={<ProviderDetails onAgencyClick={setSelectedAgency} />} />
         <Route path="/waitlist/:id" element={<WaitlistForm />} />
+        <Route path="/book-tour/:id" element={<BookTourForm />} />
       </Routes>
 
       <Footer />
     </div>
+    </DataContext.Provider>
   );
 }

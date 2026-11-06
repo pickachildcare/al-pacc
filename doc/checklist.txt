@@ -1,0 +1,96 @@
+- [x] Create a new page for Resources
+- [x] Link the Resources page in the navigation menu (desktop and mobile)
+- [x] Create bridge table user_provider for M:N relationship between Users and Providers
+- [x] Fix agency autocomplete by ensuring suggestions re-filter on load
+- [x] Add 'type' column to 'users' database table
+- [x] Display ProviderForm when "Profile Settings" is clicked in the navbar
+- [x] Populate ProviderForm with existing provider information from the database
+- [x] Only fetch provider data in ProviderForm if user type is "provider"
+- [x] Create fake user record with type set to "agency"
+- [x] Implement Agency Dashboard displaying a list of providers using ProviderCard for agency users
+- [x] Associate "agency" type users with the agencies database table
+- [x] Filter providers in Agency Dashboard to only show those associated with the user's agency ID
+- [x] Create admin user record with type set to "admin"
+- [x] Display full provider list for admin users in the dashboard with the title "Admin Dashboard"
+- [x] Add "Agencies" link to navbar
+- [x] Add `website` and `area_served` fields to `agencies` table
+- [x] Create Agencies page with list of agencies and "AgencyCard" component (dedicated AgenciesPage.jsx with search/filter, green-themed AgencyCard with contact details, provider count, and "View Providers" link)
+- [x] Add fake records in the agencies table for testing
+- [x] Add sidebar filter to Agencies page for "area_served"
+- [x] Add List and Map view toggle to Agencies page (List/Map toggle buttons with Leaflet map showing agency markers at provider locations, popups with agency details)
+- [x] Resolve CORS policy error for http://localhost:5173 by updating backend origins
+- [x] Fix "Nearby location" search functionality by correctly handling autocomplete selection and distance filtering
+- [x] Resolve "Failed to fetch" error in address search by removing forbidden headers and improving error handling
+- [x] Add "List of Providers" link to AgencyCard to filter providers by agency on the homepage
+- [x] Replace "Sign Up" button text with "Register"
+- [x] Redesign Provider Details page with sidebar table of contents
+- [x] Add sticky sidebar navigation with section icons and smooth scrolling
+- [x] Create dedicated sections: Overview, Availability, Current Availability, Location, Features & Tags, Contact, Social Links
+- [x] Add 5px border radius to each section card in Provider Details page
+- [x] Fix React anti-pattern: use useMemo for tableOfContents instead of array mutation during render
+- [x] Add scroll-based active section detection for sidebar highlighting
+- [x] Restore missing lucide-react imports
+- [x] Restore missing getIcon function
+- [x] Verify all sections exist and have titles
+- [x] Install lucide-react dependency
+- [x] Align section titles with table of contents labels
+- [x] Verify base path configuration for testing at /searchchildcare/
+- [x] Redesign Provider Details page with sidebar table of contents
+- [x] Add sticky sidebar navigation with section icons and smooth scrolling
+- [x] Create dedicated sections: Overview, About, Ages Served, Availability, Location, Features & Tags, Contact
+- [x] Add 5px border radius to each section card in Provider Details page
+- [x] Use useMemo for tableOfContents to avoid render-time mutation
+- [x] Add scroll-based active section detection with IntersectionObserver
+- [x] Add quick CTA (spots available / join waitlist) in sidebar
+- [x] Add Contact section with agency details for Licensed Home-based providers
+- [x] Update provider details page section headers to use bg-green-600 p-6 text-white relative (matching spotsAvailableModal style)
+- [x] Add spots available count to Current Availability section header in provider details page
+- [x] Add spots available count to table of contents "Availability" entry in provider details page
+- [x] Create and integrate Login and Register forms for users (AuthModal with LoginForm and SignupForm, wired to Navbar buttons, with logged-in user display and logout)
+- [x] Replace "spots available" button in ProviderCard with a link to provider details page (#availability section)
+- [x] Replace "spots" button in MapView popup with a link to provider details page (#availability section)
+- [x] Add hash-based scroll handling in ProviderDetails to auto-scroll to #availability section
+- [x] Replace "Ages Served" button in ProviderCard with a simple link to provider details page (#ages-served section)
+- [x] Move "Ages Served" link in ProviderCard from top row to bottom tags row (next to Snacks Provided tag, styled as purple tag)
+- [x] Replace individual tag links (Full-time, Infant, Meals Provided, Snacks Provided) with single "Features & Tags" link to #features section on provider details page
+- [x] Replace "View Profile" wording with "More info" in ProviderCard on home page
+- [x] Make "Waitlist" button in ProviderCard match "spots available" button styling (plain text link instead of pill/badge)
+- [x] Remove childAge label and input textbox from WaitlistForm
+- [x] Auto-calculate and display age from DOB in WaitlistForm (2-column grid, shows years/months)
+- [x] Update "Agency" button in ProviderCard and MapView popup to match "Waitlist" button styling (plain text link)
+- [x] Replace "Agency:" label with "with" in ProviderCard and MapView popup
+- [x] Change agency link in ProviderCard and MapView popup to redirect to provider details #contact section instead of opening modal
+- [x] Add "Back to Search" link below table of contents in ProviderDetails sidebar
+- [x] Create "regions" table in database with id and name columns
+- [x] Create "area_served" table in database with id, sub_region, and region_id (foreign key to regions)
+- [x] Create "provinces" table in database with id and name columns
+- [x] Add province_id foreign key to regions table connecting to provinces table
+- [x] Populate provinces table with all 13 Canadian provinces and territories
+- [x] Create "agency_addresses" table with id, agency_id (FK to agencies), and address_id (FK to addresses)
+- [x] Create "provider_addresses" table with id, provider_id (FK to providers), and address_id (FK to addresses)
+- [x] Replace sub_region column with agency_id (FK to agencies) in area_served table
+- [x] Add region_id foreign key to agencies table referencing regions table
+- [x] Change area_served column in agencies table from String to JSON (list of strings), matching ages_served pattern in providers table
+- [x] Add Province accordion items with Region checkboxes to AgenciesPage sidebar filter
+- [x] Populate sidebar regions from database (Alberta: Calgary, Central, Edmonton)
+- [x] Show all provinces in sidebar with region checkboxes under each province accordion
+- [x] Fetch provinces and regions from API endpoints (/provinces, /regions) instead of static data
+- [x] Create AgencyDetails page with same layout/look-and-feel as ProviderDetails (sidebar TOC, hero, sections, scroll detection)
+- [x] Add /agency/:id route in App.jsx and import AgencyDetails component
+- [x] Update AgencyCard name click to navigate to /agency/:id instead of /?agency=name
+- [x] Update AgencyCard "View Providers" button to "View Details" linking to /agency/:id
+- [x] Update AgencyMapView popup name and button to navigate to /agency/:id instead of /?agency=name
+- [x] Fix AgenciesPage to fetch agencies from database API (/agencies) instead of static data.js file
+- [x] Fix AgencyDetails to fetch agency from database API (/agencies) instead of static data.js file
+- [x] Update agency provider count to use API response (agency.providers) instead of static data filtering
+- [x] Update agency address lookups to use API response fields (provider_id, latitude, longitude, full_address)
+- [x] Add "Area Served" link to AgencyCard that navigates to agency details page #area-served section
+- [x] Add hash-based scroll handling in AgencyDetails for #area-served section on page load
+- [x] Remove provider_id column from addresses table and use provider_addresses bridge table instead (backend models, schemas, populate_db, frontend data.js, App.jsx, migration script)
+- [x] Create agency_region bridge table for M:N relationship between agencies and regions
+- [x] Add address_type column to agency_addresses table to differentiate between provider and agency addresses (later removed)
+- [x] Display agency address in AgencyCard from agency_addresses bridge table (replace phone/email with address below agency name)
+- [x] Fix /agencies API 500 error: make AddressBase fields Optional to handle NULL values in database
+- [x] Add agency address to Contact section in AgencyDetails page (from agency_addresses bridge table)
+- [x] Fix "MySQL server has gone away" error in backend by adding pool_pre_ping=True and pool_recycle=3600 to SQLAlchemy engine configuration
+- [x] Reload all agencies data from agencies table into AgenciesPage with LEFT OUTER JOIN addresses (backend already uses selectinload+joinedload; updated frontend to use agency.addresses from joined data instead of separate /addresses API call)

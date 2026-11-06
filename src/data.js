@@ -1,16 +1,61 @@
+export const provinces = [
+  { id: 1, name: "Alberta" },
+  { id: 2, name: "British Columbia" },
+  { id: 3, name: "Manitoba" },
+  { id: 4, name: "New Brunswick" },
+  { id: 5, name: "Newfoundland and Labrador" },
+  { id: 6, name: "Nova Scotia" },
+  { id: 7, name: "Ontario" },
+  { id: 8, name: "Prince Edward Island" },
+  { id: 9, name: "Quebec" },
+  { id: 10, name: "Saskatchewan" },
+  { id: 11, name: "Northwest Territories" },
+  { id: 12, name: "Nunavut" },
+  { id: 13, name: "Yukon" }
+];
+
+export const regions = [
+  { id: 1, name: "Calgary", province_id: 1 },
+  { id: 2, name: "Central", province_id: 1 },
+  { id: 3, name: "Edmonton", province_id: 1 }
+];
+
 export const agencies = [
   { id: 1, 
     name: "Bright Horizons Agency",
     phone: "514-222-3333",
-    email: "bright@gmail.com" },
+    email: "bright@gmail.com",
+    website: "https://brighthorizons.ca",
+    area_served: ["Ontario"],
+    region_id: null },
   { id: 2, 
     name: "Childcare Connections",
     phone: "514-222-3333",
-    email: "connection@gmail.com" },
+    email: "connection@gmail.com",
+    website: "https://childcareconnections.ca",
+    area_served: ["Quebec"],
+    region_id: null },
   { id: 3, 
     name: "Children Choice",
     phone: "514-222-3333",
-    email: "family@gmail.com" }
+    email: "family@gmail.com",
+    website: "https://childrenchoice.ca",
+    area_served: ["Alberta"],
+    region_id: 1 },
+  { id: 4, 
+    name: "Little Steps Agency",
+    phone: "403-555-1234",
+    email: "info@littlesteps.ca",
+    website: "https://littlesteps.ca",
+    area_served: ["Alberta"],
+    region_id: 1 },
+  { id: 5, 
+    name: "Sunflower Childcare Agency",
+    phone: "604-555-9876",
+    email: "hello@sunflowerchildcare.ca",
+    website: "https://sunflowerchildcare.ca",
+    area_served: ["British Columbia"],
+    region_id: null }
 ];
 
 export const providers = [
@@ -58,7 +103,7 @@ export const providers = [
     location: "Ottawa",
     spotsAvailable: 3,
     maxCapacity: 12,
-    AgesServed: ["Preschool (3 yrs - 4yrs)", "School (5 yrs and older)"],
+    AgesServed: ["Preschool (3 yrs - 4yrs)", "Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: true,
     registeredWithCity: true,
@@ -86,19 +131,19 @@ export const providers = [
   {
     id: 5,
     name: "Creative Kids After-School",
-    type: "After-School",
+    type: "Out of School Care",
     rating: 4.9,
     reviews: 34,
     location: "Winnipeg",
     spotsAvailable: 0,
     maxCapacity: 20,
-    AgesServed: ["School (5 yrs and older)"],
+    AgesServed: ["Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: true,
     registeredWithCity: true,
     image: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&q=80&w=400",
     tags: ["Arts & Crafts", "School", "After School", "Snacks Provided"],
-    description: "Inspiring creativity and supporting school-aged children after hours."
+    description: "Inspiring creativity and supporting school-aged children after hours. I have been"
   },
   {
     id: 6,
@@ -109,7 +154,7 @@ export const providers = [
     location: "Edmonton",
     spotsAvailable: 8,
     maxCapacity: 25,
-    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "School (5 yrs and older)"],
+    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: false,
     registeredWithCity: false,
@@ -177,7 +222,7 @@ export const providers = [
     location: "Vancouver",
     spotsAvailable: 1,
     maxCapacity: 15,
-    AgesServed: ["Preschool (3 yrs - 4yrs)", "School (5 yrs and older)"],
+    AgesServed: ["Preschool (3 yrs - 4yrs)", "Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: true,
     registeredWithCity: true,
@@ -194,7 +239,7 @@ export const providers = [
     location: "Calgary",
     spotsAvailable: 0,
     maxCapacity: 10,
-    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "School (5 yrs and older)"],
+    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: false,
     registeredWithCity: true,
@@ -213,7 +258,7 @@ export const providers = [
     location: "Calgary",
     spotsAvailable: 0,
     maxCapacity: 6,
-    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "School (5 yrs and older)"],
+    AgesServed: ["Toddler (18 months - 2 yrs)", "Preschool (3 yrs - 4yrs)", "Out of School Care (5 yrs and older)"],
     mealsProvided: false,
     snackProvided: true,
     registeredWithCity: true,
@@ -226,18 +271,33 @@ export const providers = [
 export const waitlist = [];
 
 export const addresses = [
-  { id: 1, providerId: 1, fullAddress: "123 Sunny St, Toronto, ON M5V 2H1", province: "Ontario", city: "Toronto", community: "Downtown", coordinates: { lat: 43.6426, lng: -79.3871 } },
-  { id: 2, providerId: 2, fullAddress: "456 Quiet Ln, Montreal, QC H3B 1A2", province: "Quebec", city: "Montreal", community: "Ville-Marie", coordinates: { lat: 45.5017, lng: -73.5673 } },
-  { id: 3, providerId: 3, fullAddress: "789 Knowledge Way, Ottawa, ON K1P 5L1", province: "Ontario", city: "Ottawa", community: "Centretown", coordinates: { lat: 45.4215, lng: -75.6972 } },
-  { id: 4, providerId: 4, fullAddress: "321 Baby Steps Blvd, Quebec City, QC G1R 4P5", province: "Quebec", city: "Quebec City", community: "Old Quebec", coordinates: { lat: 46.8139, lng: -71.2080 } },
-  { id: 5, providerId: 5, fullAddress: "555 Art Circle, Winnipeg, MB R3C 1V1", province: "Manitoba", city: "Winnipeg", community: "Forks", coordinates: { lat: 49.8951, lng: -97.1384 } },
-  { id: 6, providerId: 6, fullAddress: "888 Nature Path, Edmonton, AB T5J 2R7", province: "Alberta", city: "Edmonton", community: "Downtown", coordinates: { lat: 53.5461, lng: -113.4938 } },
-  { id: 7, providerId: 7, fullAddress: "222 Park Ave, Halifax, NS B3J 1M5", province: "Nova Scotia", city: "Halifax", community: "Downtown", coordinates: { lat: 44.6488, lng: -63.5752 } },
-  { id: 8, providerId: 8, fullAddress: "444 River St, Victoria, BC V8W 1P5", province: "BC", city: "Victoria", community: "Downtown", coordinates: { lat: 48.4284, lng: -123.3656 } },
-  { id: 9, providerId: 9, fullAddress: "123 Calgary Trail, Calgary, AB T2P 2M5", province: "Alberta", city: "Calgary", community: "Beltline", coordinates: { lat: 51.0447, lng: -114.0719 } },
-  { id: 10, providerId: 10, fullAddress: "789 Ocean Drive, Vancouver, BC V6J 1Z1", province: "BC", city: "Vancouver", community: "Kitsilano", coordinates: { lat: 49.2684, lng: -123.1678 } },
-  { id: 11, providerId: 11, fullAddress: "45 Sundance Blvd, Calgary, AB T2X 2G1", province: "Alberta", city: "Calgary", community: "Sundance", coordinates: { lat: 50.9022, lng: -114.0483 } },
-  { id: 12, providerId: 12, fullAddress: "24 cranberry lane se, Calgary, AB T3M 0L5", province: "Alberta", city: "Calgary", community: "Cranston", coordinates: { lat: 50.8834, lng: -113.9736 } }
+  { id: 1, fullAddress: "123 Sunny St, Toronto, ON M5V 2H1", province: "Ontario", city: "Toronto", community: "Downtown", coordinates: { lat: 43.6426, lng: -79.3871 } },
+  { id: 2, fullAddress: "456 Quiet Ln, Montreal, QC H3B 1A2", province: "Quebec", city: "Montreal", community: "Ville-Marie", coordinates: { lat: 45.5017, lng: -73.5673 } },
+  { id: 3, fullAddress: "789 Knowledge Way, Ottawa, ON K1P 5L1", province: "Ontario", city: "Ottawa", community: "Centretown", coordinates: { lat: 45.4215, lng: -75.6972 } },
+  { id: 4, fullAddress: "321 Baby Steps Blvd, Quebec City, QC G1R 4P5", province: "Quebec", city: "Quebec City", community: "Old Quebec", coordinates: { lat: 46.8139, lng: -71.2080 } },
+  { id: 5, fullAddress: "555 Art Circle, Winnipeg, MB R3C 1V1", province: "Manitoba", city: "Winnipeg", community: "Forks", coordinates: { lat: 49.8951, lng: -97.1384 } },
+  { id: 6, fullAddress: "888 Nature Path, Edmonton, AB T5J 2R7", province: "Alberta", city: "Edmonton", community: "Downtown", coordinates: { lat: 53.5461, lng: -113.4938 } },
+  { id: 7, fullAddress: "222 Park Ave, Halifax, NS B3J 1M5", province: "Nova Scotia", city: "Halifax", community: "Downtown", coordinates: { lat: 44.6488, lng: -63.5752 } },
+  { id: 8, fullAddress: "444 River St, Victoria, BC V8W 1P5", province: "BC", city: "Victoria", community: "Downtown", coordinates: { lat: 48.4284, lng: -123.3656 } },
+  { id: 9, fullAddress: "123 Calgary Trail, Calgary, AB T2P 2M5", province: "Alberta", city: "Calgary", community: "Beltline", coordinates: { lat: 51.0447, lng: -114.0719 } },
+  { id: 10, fullAddress: "789 Ocean Drive, Vancouver, BC V6J 1Z1", province: "BC", city: "Vancouver", community: "Kitsilano", coordinates: { lat: 49.2684, lng: -123.1678 } },
+  { id: 11, fullAddress: "45 Sundance Blvd, Calgary, AB T2X 2G1", province: "Alberta", city: "Calgary", community: "Sundance", coordinates: { lat: 50.9022, lng: -114.0483 } },
+  { id: 12, fullAddress: "24 cranberry lane se, Calgary, AB T3M 0L5", province: "Alberta", city: "Calgary", community: "Cranston", coordinates: { lat: 50.8834, lng: -113.9736 } }
+];
+
+export const providerAddresses = [
+  { id: 1, providerId: 1, addressId: 1 },
+  { id: 2, providerId: 2, addressId: 2 },
+  { id: 3, providerId: 3, addressId: 3 },
+  { id: 4, providerId: 4, addressId: 4 },
+  { id: 5, providerId: 5, addressId: 5 },
+  { id: 6, providerId: 6, addressId: 6 },
+  { id: 7, providerId: 7, addressId: 7 },
+  { id: 8, providerId: 8, addressId: 8 },
+  { id: 9, providerId: 9, addressId: 9 },
+  { id: 10, providerId: 10, addressId: 10 },
+  { id: 11, providerId: 11, addressId: 11 },
+  { id: 12, providerId: 12, addressId: 12 }
 ];
 
 export const spotsAvailable = [
@@ -251,5 +311,5 @@ export const spotsAvailable = [
   { id: 8, providerId: 7, AgeServed: "Preschool (3 yrs - 4yrs)", partTime: 1, fullTime: 1, startDate: "2026-06-01" },
   { id: 9, providerId: 9, AgeServed: "Infant (0-17 months)", partTime: 2, fullTime: 2, startDate: "2026-04-15" },
   { id: 10, providerId: 9, AgeServed: "Preschool (3 yrs - 4yrs)", partTime: 1, fullTime: 1, startDate: "2026-04-15" },
-  { id: 11, providerId: 10, AgeServed: "School (5 yrs and older)", partTime: 1, fullTime: 0, startDate: "2026-09-01" }
+  { id: 11, providerId: 10, AgeServed: "Out of School Care (5 yrs and older)", partTime: 1, fullTime: 0, startDate: "2026-09-01" }
 ];
