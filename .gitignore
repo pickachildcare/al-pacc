@@ -25,3 +25,6 @@ dist-ssr
 
 # User-uploaded provider images
 backend/uploads/
+
+# Local environment variables (tracked files must also be removed from Git's index)
+backend/.env

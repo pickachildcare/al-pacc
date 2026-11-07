@@ -6,7 +6,7 @@ import leafBg from './assets/educators-group.jpg';
 import { PaginatedList } from './Pagination';
 import SearchAutocomplete from './SearchAutocomplete';
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
 
 // Fix for default marker icons in Leaflet with Webpack/Vite
 const agencyIcon = L.divIcon({
