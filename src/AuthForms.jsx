@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+
 export const SignupForm = ({ onClose, onSwitchToLogin, onLoginSuccess }) => {
   const [formData, setFormData] = useState({
     username: '',
@@ -29,7 +31,7 @@ export const SignupForm = ({ onClose, onSwitchToLogin, onLoginSuccess }) => {
     setLoading(true);
     try {
       const { confirmPassword, ...signupData } = formData;
-      const response = await fetch('http://localhost:8000/signup', {
+      const response = await fetch(`${API_BASE}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(signupData),
@@ -41,7 +43,7 @@ export const SignupForm = ({ onClose, onSwitchToLogin, onLoginSuccess }) => {
       }
 
       // After successful signup, auto-login
-      const loginResponse = await fetch('http://localhost:8000/login', {
+      const loginResponse = await fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: formData.username, password: formData.password }),
@@ -210,7 +212,7 @@ export const LoginForm = ({ onClose, onLoginSuccess, onSwitchToSignup }) => {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/login', {
+      const response = await fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

@@ -9,8 +9,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.hostname 
 const emptyProvider = {
   name: '', type: 'Licensed Home-based', location: '', spots_available: 0, max_capacity: 0,
   ages_served: [], schedule_options: [], meals_provided: false, snack_provided: false,
-  image: '', description: '', agency_id: '',
-  phone: '', website: '',
+  image: '', cover_image: '', description: '', agency_id: '',
+  phone: '', email: '', website: '',
   full_address: '', city: '', province: '', community: '', postal_code: '', latitude: '', longitude: '',
 };
 
@@ -149,7 +149,7 @@ const AddressLocationFields = ({ form, setForm, provinces, cities, communities }
   );
 };
 
-const Modal = ({ title, onClose, onSubmit, saving, error, children }) => (
+const Modal = ({ title, onClose, onSubmit, saving, disableSave, error, children }) => (
   <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 p-4">
     <form onSubmit={onSubmit} className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b">
@@ -162,7 +162,7 @@ const Modal = ({ title, onClose, onSubmit, saving, error, children }) => (
       </div>
       <div className="flex justify-end gap-3 px-6 py-4 border-t">
         <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
-        <button type="submit" disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50">
+        <button type="submit" disabled={saving || disableSave} className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50">
           {saving ? 'Saving...' : 'Save'}
         </button>
       </div>
@@ -283,9 +283,11 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
       meals_provided: !!provider.meals_provided,
       snack_provided: !!provider.snack_provided,
       image: provider.image || '',
+      cover_image: provider.cover_image || '',
       description: provider.description || '',
       agency_id: provider.agency_id ?? '',
       phone: provider.phone || '',
+      email: provider.email || '',
       website: provider.website || '',
       full_address: addr?.full_address || '',
       city: addr?.city || '',
@@ -308,7 +310,7 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
     close_time: (h.close_time || '').slice(0, 5),
   })));
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState('');
   const [error, setError] = useState('');
 
   const addHours = () => setHours(hs => [...hs, { day_of_week: 1, open_time: '09:00', close_time: '17:00' }]);
@@ -335,23 +337,23 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
     spotIndex === index ? { ...spot, [key]: value } : spot
   )));
 
-  const uploadImage = async (e) => {
+  const uploadImage = async (e, field) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) { setError('Please choose an image file.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('Image must be 5 MB or smaller.'); return; }
-    setUploading(true);
+    setUploading(field);
     setError('');
     try {
       const data = new FormData();
       data.append('file', file);
       const { url } = await apiRequest('/admin/upload-image', { method: 'POST', body: data });
-      setForm(f => ({ ...f, image: url }));
+      setForm(f => ({ ...f, [field]: url }));
     } catch (err) {
       setError(err.message);
     } finally {
-      setUploading(false);
+      setUploading('');
     }
   };
 
@@ -372,8 +374,10 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
       meals_provided: form.meals_provided,
       snack_provided: form.snack_provided,
       image: form.image.trim() || null,
+      cover_image: form.cover_image.trim() || null,
       description: form.description,
       phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
       website: form.website.trim() || null,
       agency_id: form.agency_id === '' ? null : Number(form.agency_id),
       rating: provider?.rating ?? 0,
@@ -411,7 +415,7 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
   const types = !form.type || typeNames.includes(form.type) ? typeNames : [...typeNames, form.type];
 
   return (
-    <Modal title={provider ? 'Edit Provider' : 'Add Provider'} onClose={onClose} onSubmit={submit} saving={saving} error={error}>
+    <Modal title={provider ? 'Edit Provider' : 'Add Provider'} onClose={onClose} onSubmit={submit} saving={saving} disableSave={!!uploading} error={error}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Name"><input required className={inputCls} value={form.name} onChange={set('name')} /></Field>
         <Field label="Type">
@@ -542,20 +546,26 @@ const ProviderModal = ({ provider, spotRecords, agencies, typeOptions, agesOptio
           </div>
         ))}
       </section>
-      <Field label="Image">
-        <div className="flex items-center gap-3">
-          {form.image && <img src={form.image} alt="Provider" className="h-16 w-16 rounded-lg object-cover border" />}
-          <div className="flex-1 space-y-2">
-            <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={uploadImage} disabled={uploading}
-              className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-green-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-green-700 hover:file:bg-green-100" />
-            <input placeholder="or paste an image URL" className={inputCls} value={form.image} onChange={set('image')} />
+      {[
+        { field: 'image', label: 'Logo' },
+        { field: 'cover_image', label: 'Cover image' },
+      ].map(({ field, label }) => (
+        <Field key={field} label={label}>
+          <div className="flex items-center gap-3">
+            {form[field] && <img src={form[field]} alt={label} className="h-16 w-16 rounded-lg object-cover border" />}
+            <div className="flex-1 space-y-2">
+              <input aria-label={`Upload ${label.toLowerCase()}`} type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={e => uploadImage(e, field)} disabled={!!uploading}
+                className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-green-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-green-700 hover:file:bg-green-100" />
+              <input aria-label={`${label} URL`} placeholder="or paste an image URL" maxLength={500} className={inputCls} value={form[field]} onChange={set(field)} />
+            </div>
           </div>
-        </div>
-        {uploading && <p className="mt-1 text-xs text-gray-500">Uploading...</p>}
-      </Field>
+          {uploading === field && <p className="mt-1 text-xs text-gray-500">Uploading...</p>}
+        </Field>
+      ))}
       <Field label="Description"><textarea rows={3} maxLength={1000} className={inputCls} value={form.description} onChange={set('description')} /></Field>
       <div>
         <Field label="Phone"><input type="tel" maxLength={50} className={inputCls} value={form.phone} onChange={set('phone')} /></Field>
+        <Field label="Email"><input type="email" maxLength={255} className={inputCls} value={form.email} onChange={set('email')} /></Field>
         <Field label="Website"><input className={inputCls} value={form.website} onChange={set('website')} /></Field>
       </div>
       <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide pt-2 border-t">Address</h3>

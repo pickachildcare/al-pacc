@@ -1,5 +1,16 @@
 Pick a childcare is a free directory of childcare centers, licensed and non-licensed dayhomes. Parents can search for childcare providers in their area, see spots available, and join their waitlists
 
+## Provider email migration
+
+For an existing database, run `python add_email_to_providers.py` from the
+`backend` directory before starting the updated API. This adds a nullable
+provider contact email column without changing existing records.
+
+For separate provider logos and cover images, also run
+`python add_cover_image_to_providers.py` from `backend` before starting the
+updated API. Existing images remain logos; cover images start empty and can be
+added in the admin provider form.
+
 ## Railway deployment
 
 The backend uses MySQL. Keep the existing database unchanged until the Railway

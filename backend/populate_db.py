@@ -1,13 +1,27 @@
 import json
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models
 
 def populate():
-    # Drop and recreate all tables to ensure schema changes (like removing user_id) are applied
-    print("Dropping and recreating all tables...")
-    models.Base.metadata.drop_all(bind=engine)
     models.Base.metadata.create_all(bind=engine)
+
+    with engine.connect() as connection:
+        populated_tables = {
+            table.name: connection.execute(
+                select(func.count()).select_from(table)
+            ).scalar_one()
+            for table in models.Base.metadata.sorted_tables
+        }
+    populated_tables = {
+        name: count for name, count in populated_tables.items() if count
+    }
+    if populated_tables:
+        raise RuntimeError(
+            "Refusing to seed a non-empty database: "
+            + ", ".join(f"{name}={count}" for name, count in populated_tables.items())
+        )
 
     db = SessionLocal()
     try:
@@ -334,6 +348,7 @@ def populate():
     except Exception as e:
         print(f"An error occurred: {e}")
         db.rollback()
+        raise
     finally:
         db.close()
 

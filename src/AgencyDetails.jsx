@@ -25,7 +25,7 @@ const areaCoordinates = {
   'Nova Scotia': { lat: 44.6488, lng: -63.5752 },
 };
 
-const AgencyDetails = () => {
+const AgencyDetails = ({ onAgencyProvidersClick }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -330,7 +330,17 @@ const AgencyDetails = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Providers</label>
-                <p className="text-base font-bold text-green-600">{agencyProviders.length} Provider{agencyProviders.length !== 1 ? 's' : ''}</p>
+                {agencyProviders.length > 0 ? (
+                  <Link
+                    to={`/?agencyId=${agency.id}`}
+                    onClick={onAgencyProvidersClick}
+                    className="text-base font-bold text-green-600 hover:text-green-700 hover:underline"
+                  >
+                    {agencyProviders.length} Provider{agencyProviders.length !== 1 ? 's' : ''}
+                  </Link>
+                ) : (
+                  <p className="text-base font-bold text-green-600">0 Providers</p>
+                )}
               </div>
               <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Total Spots Available</label>
@@ -570,71 +580,13 @@ const AgencyDetails = () => {
                 </span>
                 Providers ({agencyProviders.length})
               </h2>
-              <div className="space-y-4">
-                {agencyProviders.map(provider => {
-                  const providerLocation = provider.location || '';
-                  const providerSpots = provider.spots_available || 0;
-                  const providerImage = provider.image || '';
-                  return (
-                    <div key={provider.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100 hover:bg-gray-100/50 transition">
-                      <div 
-                        onClick={() => navigate(`/provider/${provider.id}`)} 
-                        className="relative w-16 h-16 flex-shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100 p-1.5 flex items-center justify-center cursor-pointer"
-                      >
-                        {providerImage ? (
-                          <img src={providerImage} alt={provider.name} className="w-full h-full object-contain" />
-                        ) : (
-                          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <Link 
-                          to={`/provider/${provider.id}`}
-                          className="text-lg font-bold text-gray-900 hover:text-green-600 transition hover:underline"
-                        >
-                          {provider.name}
-                        </Link>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className="text-xs font-bold text-green-600 uppercase tracking-widest">{provider.type}</span>
-                          <span className="text-gray-300">|</span>
-                          <span className="text-sm text-gray-500 flex items-center">
-                            <svg className="w-3 h-3 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {providerLocation}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-2">
-                          {providerSpots > 0 ? (
-                            <Link 
-                              to={`/provider/${provider.id}#availability`}
-                              className="text-green-700 text-xs font-bold uppercase tracking-tight hover:text-green-600 hover:underline transition"
-                            >
-                              {providerSpots} spots available
-                            </Link>
-                          ) : (
-                            <Link 
-                              to={`/waitlist/${provider.id}`}
-                              className="text-red-600 text-xs font-bold uppercase tracking-tight hover:text-red-500 hover:underline transition"
-                            >
-                              Waitlist
-                            </Link>
-                          )}
-                          <Link 
-                            to={`/provider/${provider.id}`}
-                            className="text-green-600 text-xs font-bold hover:underline transition"
-                          >
-                            View Details →
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <Link
+                to={`/?agencyId=${agency.id}`}
+                onClick={onAgencyProvidersClick}
+                className="inline-block text-xl text-green-700 font-bold hover:text-green-800 hover:underline"
+              >
+                View all providers
+              </Link>
             </div>
           )}
         </div>

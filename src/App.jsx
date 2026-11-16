@@ -667,7 +667,7 @@ const SearchBar = ({ onSearch, onClear, searchType, setSearchType, initialAgency
 
 /* provider card */
 
-const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) => {
+const ProviderCard = ({ provider, onAgesClick, onSpotsClick }) => {
   const { agencies, addresses, providerAddresses } = useContext(DataContext);
   const providerAddressLink = providerAddresses.find((pa) => pa.providerId === provider.id);
   const addressEntry = providerAddressLink ? addresses.find((a) => a.id === providerAddressLink.addressId) : null;
@@ -681,8 +681,8 @@ const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) =>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-green-600 uppercase tracking-widest">{provider.type}</span>
           {provider.type === "Licensed Home-based" && agency && (
-            <Link 
-              to={`/provider/${provider.id}#contact`}
+            <Link
+              to={`/agency/${agency.id}`}
               className="text-blue-600 text-xs font-bold uppercase tracking-tight hover:text-blue-500 hover:underline transition"
             >
               with {agency.name}
@@ -716,7 +716,9 @@ const ProviderCard = ({ provider, onAgencyClick, onAgesClick, onSpotsClick }) =>
           onClick={() => navigate(`/provider/${provider.id}`)} 
           className="relative w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100 p-2 flex items-center justify-center cursor-pointer"
         >
-          <img src={provider.image} alt={provider.name} className="w-full h-full object-contain group-hover:scale-110 transition duration-500" />
+          {provider.image?.trim() && (
+            <img src={provider.image} alt={provider.name} className="w-full h-full object-contain group-hover:scale-110 transition duration-500" />
+          )}
         </div>
         <div className="flex-1 flex flex-col min-w-0">
           <button 
@@ -987,7 +989,7 @@ const SidebarFilters = ({ filters, setFilters, childcareTypes, agesServed, sched
   );
 };
 
-const ListView = ({ providers, onAgencyClick, onAgesClick, onSpotsClick, firstProviderRef }) => (
+const ListView = ({ providers, onAgesClick, onSpotsClick, firstProviderRef }) => (
   <PaginatedList
     key={providers.map(p => p.id).join(',')}
     items={providers}
@@ -997,7 +999,6 @@ const ListView = ({ providers, onAgencyClick, onAgesClick, onSpotsClick, firstPr
           <div key={provider.id} ref={index === 0 ? firstProviderRef : undefined}>
             <ProviderCard 
               provider={provider} 
-              onAgencyClick={onAgencyClick} 
               onAgesClick={onAgesClick}
               onSpotsClick={onSpotsClick}
             />
@@ -1082,6 +1083,7 @@ const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyCli
         <ChangeView center={center} />
         {providers.map((provider) => {
           const addressEntry = getProviderAddress(provider.id);
+          const agency = agencies.find(a => a.id === provider.agencyId);
           if (!addressEntry || !Number.isFinite(addressEntry.coordinates?.lat) || !Number.isFinite(addressEntry.coordinates?.lng)) return null;
           
           return (
@@ -1106,13 +1108,13 @@ const MapView = ({ providers, selectedProvider, setSelectedProvider, onAgencyCli
                   <div className="flex justify-between items-start mb-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">{provider.type}</span>
-                      {provider.type === "Licensed Home-based" && (
-                        <Link 
-                          to={`/provider/${provider.id}#contact`}
+                      {provider.type === "Licensed Home-based" && agency && (
+                        <button
+                          onClick={() => onAgencyClick(agency)}
                           className="text-blue-600 text-[10px] font-bold uppercase tracking-tight hover:text-blue-500 hover:underline transition"
                         >
-                          with {agencies.find(a => a.id === provider.agencyId)?.name}
-                        </Link>
+                          with {agency.name}
+                        </button>
                       )}
                     </div>
                     <div>
@@ -1284,7 +1286,7 @@ const ParentsPage = () => {
   );
 };
 
-const ProviderDetails = ({ onAgencyClick }) => {
+const ProviderDetails = () => {
   const { providers, agencies, addresses, providerAddresses, spotsAvailable, loading, error } = useContext(DataContext);
   const { id } = useParams();
   const location = useLocation();
@@ -1294,6 +1296,11 @@ const ProviderDetails = ({ onAgencyClick }) => {
   const address = providerAddressLink ? addresses.find(a => a.id === providerAddressLink.addressId) : null;
   const agency = agencies.find(a => a.id === provider?.agencyId);
   const providerSpots = spotsAvailable.filter(s => s.providerId === providerId);
+  const rawWebsite = typeof provider?.website === 'string' ? provider.website.trim() : '';
+  const website = rawWebsite
+    ? (/^[a-z][a-z0-9+.-]*:/i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`)
+    : '';
+  const providerWebsite = /^https?:\/\//i.test(website) ? website : '';
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('overview');
   const sectionRefs = useRef({});
@@ -1338,11 +1345,11 @@ const ProviderDetails = ({ onAgencyClick }) => {
     if (provider?.operating_hours?.length > 0) {
       sections.push({ id: 'operating-hours', label: 'Operating Hours', icon: 'clock' });
     }
-    if (provider?.phone || (provider?.type === "Licensed Home-based" && agency)) {
+    if (provider?.phone || provider?.email || providerWebsite) {
       sections.push({ id: 'contact', label: 'Contact', icon: 'phone' });
     }
     return sections;
-  }, [provider?.operating_hours?.length, providerSpots.length, address, provider?.type, provider?.phone, agency, provider?.scheduleOptions?.length, provider?.spotsAvailable]);
+  }, [provider?.operating_hours?.length, providerSpots.length, address, provider?.phone, provider?.email, providerWebsite, provider?.scheduleOptions?.length, provider?.spotsAvailable]);
 
   // Intersection Observer for active section detection
   useEffect(() => {
@@ -1451,8 +1458,10 @@ const ProviderDetails = ({ onAgencyClick }) => {
 
       {/* Hero Section */}
       <div className="bg-white rounded-[5px] shadow-xl overflow-hidden border border-gray-100 mb-8">
-        <div className="h-56 sm:h-80 w-full relative flex items-center justify-center">
-          <img src={provider.image} alt={provider.name} className="w-full h-full object-cover" />
+        <div className="h-56 sm:h-80 w-full relative flex items-center justify-center bg-gray-300">
+          {provider.cover_image?.trim() && (
+            <img src={provider.cover_image} alt={provider.name} className="w-full h-full object-cover" />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
           <div className="absolute inset-0 flex items-center justify-center p-4">
             <h1 className="text-3xl sm:text-5xl font-bold text-white bg-black/40 backdrop-blur-md px-8 py-4 rounded-[5px] shadow-2xl text-center border border-white/10 uppercase tracking-tight">
@@ -1464,12 +1473,12 @@ const ProviderDetails = ({ onAgencyClick }) => {
               {provider.type}
             </span>
             {provider.type === "Licensed Home-based" && agency && (
-              <button 
-                onClick={() => onAgencyClick(agency)}
+              <Link
+                to={`/agency/${agency.id}`}
                 className="bg-blue-600/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-white uppercase tracking-tight shadow-sm hover:bg-blue-700 transition cursor-pointer"
               >
                 Agency: {agency.name}
-              </button>
+              </Link>
             )}
           </div>
           <div className="absolute top-4 right-4">
@@ -1604,6 +1613,14 @@ const ProviderDetails = ({ onAgencyClick }) => {
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Type</label>
                 <p className="text-base font-bold text-gray-900">{provider.type}</p>
               </div>
+              {agency && (
+                <div className="bg-gray-50 p-5 rounded-[5px] border border-gray-100">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Agency</label>
+                  <Link to={`/agency/${agency.id}`} className="text-base font-bold text-green-700 hover:text-green-800 hover:underline">
+                    {agency.name}
+                  </Link>
+                </div>
+              )}
             </div>
             {address && (
               <div className="mt-4 bg-gray-50 p-4 rounded-[5px] border border-gray-100 flex items-center gap-3">
@@ -1633,26 +1650,19 @@ const ProviderDetails = ({ onAgencyClick }) => {
             <p className="text-gray-600 leading-relaxed text-lg">
               {provider.description}
             </p>
-            {(() => {
-              const rawWebsite = typeof provider.website === 'string' ? provider.website.trim() : '';
-              const website = rawWebsite
-                ? (/^[a-z][a-z0-9+.-]*:/i.test(rawWebsite) ? rawWebsite : `https://${rawWebsite}`)
-                : '';
-              if (!/^https?:\/\//i.test(website)) return null;
-              return (
+            {providerWebsite && (
                 <p className="mt-6 text-base break-all">
                   <span className="font-semibold text-gray-700">Website: </span>
                   <a
-                    href={website}
+                    href={providerWebsite}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-green-700 underline hover:text-green-800"
                   >
-                    {website}
+                    {providerWebsite}
                   </a>
                 </p>
-              );
-            })()}
+            )}
           </div>
 
           {/* Ages Served Section */}
@@ -1850,7 +1860,7 @@ const ProviderDetails = ({ onAgencyClick }) => {
           )}
 
           {/* Contact Section */}
-          {(provider.phone || (provider.type === "Licensed Home-based" && agency)) && (
+          {(provider.phone || provider.email || providerWebsite) && (
             <div 
               id="contact"
               ref={(el) => { sectionRefs.current['contact'] = el; }}
@@ -1878,35 +1888,7 @@ const ProviderDetails = ({ onAgencyClick }) => {
                     </div>
                   </div>
                 )}
-                {provider.type === "Licensed Home-based" && agency && (
-                  <>
-                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
-                  <div className="bg-green-100 p-2 rounded-[5px] text-green-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Agency</label>
-                    <button 
-                      onClick={() => onAgencyClick(agency)}
-                      className="text-gray-900 font-bold hover:text-green-600 transition cursor-pointer"
-                    >
-                      {agency.name}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
-                  <div className="bg-green-100 p-2 rounded-[5px] text-green-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Phone</label>
-                    <a href={`tel:${agency.phone}`} className="text-gray-900 font-bold hover:text-green-600 transition">{agency.phone}</a>
-                  </div>
-                </div>
+                {provider.email && (
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
                   <div className="bg-blue-100 p-2 rounded-[5px] text-blue-600">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1915,10 +1897,11 @@ const ProviderDetails = ({ onAgencyClick }) => {
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Email</label>
-                    <a href={`mailto:${agency.email}`} className="text-gray-900 font-bold hover:text-green-600 transition">{agency.email}</a>
+                    <a href={`mailto:${provider.email}`} className="text-gray-900 font-bold hover:text-green-600 transition break-all">{provider.email}</a>
                   </div>
                 </div>
-                {agency.website && (
+                )}
+                {providerWebsite && (
                   <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-[5px] border border-gray-100">
                     <div className="bg-purple-100 p-2 rounded-[5px] text-purple-600">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1927,13 +1910,11 @@ const ProviderDetails = ({ onAgencyClick }) => {
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Website</label>
-                      <a href={agency.website} target="_blank" rel="noopener noreferrer" className="text-gray-900 font-bold hover:text-green-600 transition">
-                        {agency.website}
+                      <a href={providerWebsite} target="_blank" rel="noopener noreferrer" className="text-gray-900 font-bold hover:text-green-600 transition break-all">
+                        {providerWebsite}
                       </a>
                     </div>
                   </div>
-                )}
-                  </>
                 )}
               </div>
             </div>
@@ -1995,9 +1976,10 @@ export default function App() {
         })));
         setSpotsAvailable(spotData.map(normalizeSpot));
         const ageNames = ageData.map(age => age.name);
+        const youngestAgeNames = ['Baby (0 to 12 months)', 'Infant (Birth to 12 months)'];
         setAgesServed([
-          ...ageNames.filter(name => name === 'Baby (0 to 12 months)'),
-          ...ageNames.filter(name => name !== 'Baby (0 to 12 months)'),
+          ...ageNames.filter(name => youngestAgeNames.includes(name)),
+          ...ageNames.filter(name => !youngestAgeNames.includes(name)),
         ]);
         setChildcareTypes(childcareTypeData.map(type => type.name));
         setScheduleOptions(scheduleOptionData.map(option => option.name));
@@ -2346,7 +2328,6 @@ export default function App() {
                       viewMode === 'list' ? (
                         <ListView 
                           providers={filteredProviders} 
-                          onAgencyClick={setSelectedAgency} 
                           onAgesClick={setShowAgesProvider}
                           onSpotsClick={setShowSpotsProvider}
                           firstProviderRef={firstProviderRef}
@@ -2376,9 +2357,9 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/agencies" element={<AgenciesPage onAgencyProvidersClick={handleAgencyProvidersClick} />} />
         <Route path="/resources" element={<ResourcesPage />} />
-        <Route path="/agency/:id" element={<AgencyDetails />} />
+        <Route path="/agency/:id" element={<AgencyDetails onAgencyProvidersClick={handleAgencyProvidersClick} />} />
         <Route path="/parents" element={<ParentsPage />} />
-        <Route path="/provider/:id" element={<ProviderDetails onAgencyClick={setSelectedAgency} />} />
+        <Route path="/provider/:id" element={<ProviderDetails />} />
         <Route path="/waitlist/:id" element={<WaitlistForm />} />
         <Route path="/book-tour/:id" element={<BookTourForm />} />
       </Routes>

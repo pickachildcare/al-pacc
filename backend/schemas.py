@@ -50,8 +50,10 @@ class ProviderBase(BaseModel):
     meals_provided: bool
     snack_provided: bool
     image: Optional[str] = None
+    cover_image: Optional[str] = Field(default=None, max_length=500)
     description: str
     phone: Optional[str] = Field(default=None, max_length=50)
+    email: Optional[str] = Field(default=None, max_length=255)
     website: Optional[str] = Field(default=None, max_length=500)
     agency_id: Optional[int] = None
     user_ids: List[int] = []

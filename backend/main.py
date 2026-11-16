@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload, object_session
 from typing import List, Optional
 from pathlib import Path
+import os
 import uuid
 import models, schemas, database, auth
 from database import engine, get_db
@@ -43,6 +44,7 @@ origins = [
     "https://pickachildcare.github.io",
     "https://pickachildcare.com",
 ]
+origins += [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -432,6 +434,9 @@ def create_provider_profile(
     current_user: models.User = Depends(get_current_user)
 ):
     provider_data = provider.model_dump()
+    for field in ("email", "cover_image"):
+        if field not in provider.model_fields_set:
+            provider_data.pop(field)
     # Remove user_ids from data to avoid conflict with explicit relationship management
     if "user_ids" in provider_data:
         del provider_data["user_ids"]
@@ -545,6 +550,9 @@ def admin_create_region_served_lookup(
 
 def _apply_provider_data(db: Session, db_provider: models.Provider, provider: schemas.ProviderAdminSave):
     data = provider.model_dump(exclude={"address", "detailed_spots", "operating_hours"})
+    for field in ("email", "cover_image"):
+        if field not in provider.model_fields_set:
+            data.pop(field)
     user_ids = data.pop("user_ids", [])
     ages_served = _resolve_ages_served(db, data.pop("ages_served", []))
     schedule_options = _resolve_schedule_options(db, data.pop("schedule_options", []))
