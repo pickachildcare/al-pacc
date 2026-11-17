@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, useId } from 'react';
 import { Routes, Route, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import leafBg from './assets/bg.jpg';
@@ -837,6 +837,16 @@ const AccordionItem = ({ title, children, defaultOpen = false }) => {
 };
 
 const SidebarFilters = ({ filters, setFilters, childcareTypes, agesServed, scheduleOptions }) => {
+  const [isOpen, setIsOpen] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  const filtersId = useId();
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const handleChange = (event) => setIsOpen(event.matches);
+    desktop.addEventListener('change', handleChange);
+    return () => desktop.removeEventListener('change', handleChange);
+  }, []);
+
   const orderedChildcareTypes = [...childcareTypes];
   const privateDayhomeIndex = orderedChildcareTypes.indexOf('Private Dayhome');
   if (privateDayhomeIndex !== -1) {
@@ -888,14 +898,27 @@ const SidebarFilters = ({ filters, setFilters, childcareTypes, agesServed, sched
 
   return (
     <div className="space-y-2">
-      <div  style={{backgroundColor: "lightblue"}} className="flex items-center gap-2 p-3 rounded-xl">
-        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-        </svg>
-        <h2 className="text-xl font-bold text-gray-900">Filter Childcare</h2>
-      </div>
+      <h2>
+        <button
+          type="button"
+          onClick={() => setIsOpen((open) => !open)}
+          aria-expanded={isOpen}
+          aria-controls={filtersId}
+          style={{ backgroundColor: "lightblue" }}
+          className="flex w-full items-center gap-2 p-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+        >
+          <svg aria-hidden="true" className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          <span className="flex-1 text-xl font-bold text-gray-900">Filter Childcare</span>
+          <svg aria-hidden="true" className={`w-5 h-5 text-gray-600 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </h2>
 
-      <div className="space-y-1.5">
+      <div id={filtersId} hidden={!isOpen} className="space-y-2">
+        <div className="space-y-1.5">
         <AccordionItem title="Availability">
           <div className="space-y-2">
             <label className="flex items-center group cursor-pointer">
@@ -975,15 +998,16 @@ const SidebarFilters = ({ filters, setFilters, childcareTypes, agesServed, sched
             ))}
           </div>
         </AccordionItem>
-      </div>
+        </div>
 
-      <div className="pt-2">
-        <button
-          onClick={() => setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], rating: 0, spotsOnly: false })}
-          className="w-full py-3 text-sm font-bold text-gray-500 hover:text-green-600 border border-gray-200 hover:border-green-600 rounded-xl transition"
-        >
-          Reset Filters
-        </button>
+        <div className="pt-2">
+          <button
+            onClick={() => setFilters({ types: [], agesServed: [], mealOptions: [], scheduleOptions: [], rating: 0, spotsOnly: false })}
+            className="w-full py-3 text-sm font-bold text-gray-500 hover:text-green-600 border border-gray-200 hover:border-green-600 rounded-xl transition"
+          >
+            Reset Filters
+          </button>
+        </div>
       </div>
     </div>
   );
